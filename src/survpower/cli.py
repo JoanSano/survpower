@@ -133,7 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Cox fitter for univariate simulations")
     m.add_argument("--n-sims", type=int, default=1000,
                    help="replicates for power estimates and confirmation runs")
-    m.add_argument("--n-sims-grid", type=int, default=300,
+    m.add_argument("--n-sims-grid", type=int, default=1000,
                    help="replicates per grid point when solving for N or the effect")
     m.add_argument("--n-sims-sensitivity", type=int, default=300,
                    help="replicates per scenario in sensitivity analyses")

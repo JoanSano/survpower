@@ -5,13 +5,17 @@ Three questions a target concordance C can mean, each with its own N:
 1. **Association** -- is the biomarker related to survival at all? Convert C
    to a per-SD log-HR with `beta_of_c` and use the Cox Wald test (efficient
    under PH; see `survpower.planning`).
-2. **Benchmark** -- does the biomarker's C exceed a benchmark C0 (an
-   established score, a minimum useful level)? One-sided test of H0: C <= C0
-   on the estimated C with its asymptotic SE (eq. B.6).
+2. **Benchmark** -- does the biomarker's C exceed a benchmark C0 (a minimum
+   useful level)? One-sided test of H0: C <= C0 on the estimated C with its
+   asymptotic SE (eq. 29). C0 is treated as a known constant. When the
+   benchmark is a competing model's C estimated on the same patients, the
+   right analysis is a paired comparison of correlated C estimates
+   (DeLong et al., 1988; Kang et al., 2015), which this module does not
+   implement; the fixed-benchmark N can then be conservative or not.
 3. **Precision** -- how precisely is C estimated? N for a target 95% CI
    half-width.
 
-Mapping (eq. B.2): for X ~ N(0, 1) under PH with *any* baseline hazard,
+Mapping (eq. 25): for X ~ N(0, 1) under PH with *any* baseline hazard,
 P(T_i < T_j | X_i, X_j) = expit(beta (X_i - X_j)), so the population
 (Goenen-Heller) concordance K(beta) is a 1-D integral over D = X_i - X_j ~ N(0, 2).
 
@@ -19,14 +23,17 @@ Estimators:
 
 * **Harrell's C** counts a pair as comparable when the shorter observed time
   is an event. Under censoring it converges to `harrell_limit` (> K(beta));
-  benchmark sample sizes must use that limit, not the nominal C (Table B3).
+  benchmark sample sizes use that limit (Table 10). The offset is small at
+  20% censoring (0.7032 vs. 0.70) and grows with censoring; because
+  N ~ (C - C0)^-2, uncertainty in the assumed C itself matters far more, so
+  run several plausible C values.
 * **Uno's C** (Uno et al., 2011) re-weights comparable pairs by 1/G(T_i)^2,
   G = Kaplan-Meier survival of the censoring distribution, and truncates at
   a horizon tau. It converges to the censoring-free, tau-truncated
   concordance `uno_limit`, so it does not depend on the censoring pattern.
 
 Standard errors use the Hajek projection of the (weighted) ratio of
-U-statistics with the delta method (eq. B.5); for Uno's C the IPCW weights
+U-statistics with the delta method (eq. 28); for Uno's C the IPCW weights
 are treated as known, which slightly understates the SE (checked by
 simulation in the test-suite). Both estimators build n x n pair matrices:
 practical up to a few thousand subjects.
@@ -43,14 +50,14 @@ from .baseline import DEFAULT_LAMBDA0
 from .fitting import cox_fit_1d, wald_rejects
 
 ESTIMATORS = ("harrell", "uno")
-RULE_OF_THUMB_KAPPA = 1.64  # fitted to the exact inverse of eq. B.2 (Appendix B.1)
+RULE_OF_THUMB_KAPPA = 1.64  # fitted to the exact inverse of eq. 25 (Appendix B.1)
 
 
 # --- C <-> beta ---------------------------------------------------------------
 
 def c_of_beta(beta: float) -> float:
     """Population concordance K(beta) = P(T_i < T_j | eta_i > eta_j) for a
-    standard-normal biomarker with per-SD log-HR beta (eq. B.2). Symmetric in
+    standard-normal biomarker with per-SD log-HR beta (eq. 25). Symmetric in
     the sign of beta (the concordance of the correctly oriented score)."""
     b = abs(beta)
     s = np.sqrt(2.0)
@@ -71,7 +78,7 @@ def hr_of_c(c: float) -> float:
 
 
 def beta_of_c_approx(c: float, kappa: float = RULE_OF_THUMB_KAPPA) -> float:
-    """Closed-form rule of thumb (eq. B.3): beta ~ (kappa / sqrt 2) tan(pi (C - 1/2)),
+    """Closed-form rule of thumb (eq. 26): beta ~ (kappa / sqrt 2) tan(pi (C - 1/2)),
     within 3% of the exact inverse over C in [0.55, 0.75]."""
     return float(kappa / np.sqrt(2.0) * np.tan(np.pi * (c - 0.5)))
 
@@ -80,7 +87,7 @@ def beta_of_c_approx(c: float, kappa: float = RULE_OF_THUMB_KAPPA) -> float:
 
 def harrell_limit(beta: float, lam_c: float, lambda0: float = DEFAULT_LAMBDA0,
                   n: int = 2_000_000, seed: int = 7) -> float:
-    """Large-sample limit of Harrell's C under exponential censoring (eq. B.4).
+    """Large-sample limit of Harrell's C under exponential censoring (eq. 27).
     A pair is comparable with probability (r_i + r_j) / (r_i + r_j + 2 lam_c)
     and then concordant with probability expit(|beta| |X_i - X_j|)."""
     rng = np.random.default_rng(seed)
@@ -147,7 +154,7 @@ def _weighted_c_with_se(comp_w: np.ndarray, conc: np.ndarray) -> tuple[float, fl
 
 def harrell_c_with_se(time: np.ndarray, event: np.ndarray, eta: np.ndarray) -> tuple[float, float]:
     """Harrell's C (higher eta = higher risk; no ties) with its asymptotic SE
-    (eq. B.5)."""
+    (eq. 28)."""
     time, event, eta = np.asarray(time), np.asarray(event).astype(bool), np.asarray(eta)
     comp = event[:, None] & (time[:, None] < time[None, :])
     conc = eta[:, None] > eta[None, :]
@@ -281,7 +288,7 @@ def _se_draws(n, beta, lam_c, method, tau, lambda0, n_sims, seed):
     return np.asarray(ses)
 
 
-# --- Closed forms (eq. B.6) ---------------------------------------------------
+# --- Closed forms (eq. 29) ---------------------------------------------------
 
 def benchmark_power(n: int, c_limit: float, c0: float, sigma: float, alpha: float = 0.05) -> float:
     """Approximate power of the one-sided test of H0: C <= c0 at level alpha."""
@@ -290,7 +297,7 @@ def benchmark_power(n: int, c_limit: float, c0: float, sigma: float, alpha: floa
 
 def benchmark_sample_size(c_limit: float, c0: float, sigma: float, power: float = 0.80,
                           alpha: float = 0.05) -> int:
-    """N for the one-sided benchmark test (eq. B.6). Use the estimator's
+    """N for the one-sided benchmark test (eq. 29). Use the estimator's
     limit (`concordance_limit`), not the nominal C."""
     if c_limit <= c0:
         raise ValueError("the estimator's limit must exceed the benchmark c0")

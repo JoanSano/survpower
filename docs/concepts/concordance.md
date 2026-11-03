@@ -49,15 +49,26 @@ Uno's C the horizon τ matters. By default it is the 90th percentile of observed
 follow-up, which keeps the weights bounded. Set it with `--c-tau` to a
 clinically meaningful horizon (e.g. 24 months) and report it.
 
-!!! warning "Use the estimator's limit, not the nominal C"
-    With Harrell's C the estimator converges to 0.7032, not 0.70. At a 0.05
-    margin, using the nominal value overstates N by ~13%. `survpower` always
-    plans on the limit (column `c_limit`).
+!!! note "The assumed C matters more than the estimator's offset"
+    With 20% censoring Harrell's C converges to 0.7032, not 0.70. `survpower`
+    plans on that limit (column `c_limit`). Because N ∝ (C − C₀)⁻², even this
+    0.003 offset moves N by 13% at a 0.05 margin. Uncertainty in the assumed C
+    itself is far larger, though, so run several plausible values
+    (`--c-index 0.68 0.70 0.72`) rather than trusting one.
+
+!!! warning "A fixed benchmark is a simplification"
+    The benchmark test treats C₀ as a known constant. If C₀ is the concordance
+    of a competing model (e.g. a clinical score) estimated **on the same
+    patients**, the right analysis is a paired comparison of two correlated C
+    estimates (DeLong et al., 1988; Kang et al., 2015). The correlation usually
+    reduces the variance of the difference, so the fixed-benchmark N can err in
+    either direction. Simulate the paired test under a joint model for both
+    predictors instead. `survpower` does not implement this yet.
 
 ## Standard errors
 
 Both estimators use the Hájek projection of the (weighted) ratio of
-U-statistics, giving a delta-method variance
+U-statistics (Hoeffding, 1948; see also Pencina & D'Agostino, 2004), giving a delta-method variance
 \(\widehat{\text{Var}}(\hat C) = B^{-2} \sum_i (a_i - \hat C\, b_i)^2\). Here
 \(a_i\) and \(b_i\) are the concordant and comparable pair weights involving
 subject \(i\), and \(B\) is the total comparable weight. For Uno's C the IPCW

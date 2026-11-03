@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.0 — 2026-11-03
+
+Aligned with the revised report (November 3, 2026).
+
+### Fixed
+- Attribution of the (1 − R²) Cox sample-size formula: Hsieh, Bloch & Larsen
+  (1998) and Hsieh & Lavori (2000), not "Hsieh & Lloyd".
+- Docs no longer state that power is a usable diagnostic at low events-per-variable,
+  or that competing risks apply to overall survival.
+
+### Added
+- Bootstrap 95% Monte Carlo interval for the calibrated N* and detectable HR, with
+  a warning in the summary when the interval contains the closed-form N.
+- Schoenfeld two-group formula alongside Freedman's (lifelines) for the
+  dichotomized analysis; Monte Carlo dichotomized power on the same cohorts as
+  the continuous analysis, with the fitted group HR.
+- Low-EPV diagnostics: bias on the log-HR scale with MCSE, mean model SE,
+  type-I error and size-adjusted power (null run at the same p).
+- `--sensitivity omitted`: adjusted vs. unadjusted analysis with prognostic
+  covariates independent of the biomarker (non-collapsibility).
+- References page; caveats on fixed concordance benchmarks.
+
+### Changed
+- `--n-sims-grid` default 300 → 1000 (300 cannot resolve the ~2% calibration).
+- `survpower report` follows the revised report's procedures and numbering
+  (Tables 1–10, Figures 1–7).
+
 ## 0.1.0 — 2026-11-03
 
 First packaged release, from the single-file `cox_ph_power_simulations.py` and the

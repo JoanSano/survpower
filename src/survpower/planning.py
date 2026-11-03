@@ -51,10 +51,10 @@ from .concordance import (
     simulate_cindex_power,
 )
 from .design import StudyDesign
-from .simulate import simulate_power_design
+from .simulate import simulate_continuous_vs_dichotomized, simulate_power_design
 
 #: Below this many evaluable patients the U-statistic SE of C is anti-
-#: conservative (Appendix B, Table B2).
+#: conservative (Appendix B, Table 9).
 MIN_N_FOR_C_TESTS = 60
 
 
@@ -69,25 +69,37 @@ def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
         for hr in hrs:
             hr_sd = design.to_per_sd(hr)
             cr = design.censor_rate_for(hr_sd)
-            power, mean_ev = simulate_power_design(
-                n=n_eval, hr=hr_sd, censor_rate=cr, p=design.n_covariates,
-                r2_target=design.r2, lambda0=design.lambda0, n_sims=design.n_sims,
-                alpha=design.alpha, sides=design.sides, seed=design.seed + 101 * combo,
-                engine=design.engine,
-            )
+            seed = design.seed + 101 * combo
+            univariate_fast = design.n_covariates == 0 and design.engine == "fast"
+            dich_sim = np.nan
+            if univariate_fast:  # continuous and median-split fits on the same cohorts
+                r = simulate_continuous_vs_dichotomized(
+                    n=n_eval, hr=hr_sd, censor_rate=cr, lambda0=design.lambda0,
+                    n_sims=design.n_sims, alpha=design.alpha, seed=seed, sides=design.sides)
+                power, mean_ev, dich_sim = r["power_cont"], r["mean_events"], r["power_dich"]
+            else:
+                power, mean_ev = simulate_power_design(
+                    n=n_eval, hr=hr_sd, censor_rate=cr, p=design.n_covariates,
+                    r2_target=design.r2, lambda0=design.lambda0, n_sims=design.n_sims,
+                    alpha=design.alpha, sides=design.sides, seed=seed, engine=design.engine,
+                )
             lo, hi = wilson_ci(power, design.n_sims)
             closed = theoretical_power_with_r2(
                 n=n_eval, hr=hr_sd, censor_rate=cr, r2_target=design.r2_eff,
                 alpha=design.alpha, sides=design.sides,
             )
-            power_dich = (dichotomized_power(n_eval, hr_sd, cr, design.alpha, design.sides)
-                          if design.n_covariates == 0 else np.nan)
+            univariate = design.n_covariates == 0
+            dich = {m: (dichotomized_power(n_eval, hr_sd, cr, design.alpha, design.sides, method=m)
+                        if univariate else np.nan) for m in ("freedman", "schoenfeld")}
             rows.append(dict(
                 n_enrolled=n, n_evaluable=n_eval, hr=round(hr, 4), hr_per_sd=round(hr_sd, 4),
                 c_index=round(c_of_beta(np.log(hr_sd)), 4),
                 censor_rate=round(cr, 3), mean_events=round(mean_ev, 1),
                 power_sim=round(power, 3), power_ci_low=round(lo, 3), power_ci_high=round(hi, 3),
-                power_closed_form=round(closed, 3), power_dichotomized=round(float(power_dich), 3),
+                power_closed_form=round(closed, 3),
+                power_dichotomized_sim=round(float(dich_sim), 3),
+                power_dich_freedman=round(float(dich["freedman"]), 3),
+                power_dich_schoenfeld=round(float(dich["schoenfeld"]), 3),
                 summary=(
                     f"With N = {n} patients enrolled ({n_eval} evaluable; ~{mean_ev:.0f} "
                     f"expected events), a {design.test_label()} has {power:.0%} power "
@@ -120,14 +132,19 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
             details.append(out)
             n_enrol = design.enrolled(out["n_calibrated"])
             n_dich = (design.enrolled(dichotomized_sample_size(pw, hr_sd, cr, design.alpha,
-                                                               design.sides))
+                                                               design.sides, method="schoenfeld"))
                       if design.n_covariates == 0 else np.nan)
+            lo, hi = out["n_ci_low"], out["n_ci_high"]
+            has_ci = np.isfinite(lo)
+            ci_txt = (f"; 95% Monte Carlo interval {int(lo)}-{int(hi)} evaluable" if has_ci else "")
+            unresolved = has_ci and lo <= out["n_closed_form"] <= hi
             rows.append(dict(
                 hr=round(hr, 4), hr_per_sd=round(hr_sd, 4), c_index=round(c_of_beta(np.log(hr_sd)), 4),
                 target_power=pw, censor_rate=round(cr, 3),
                 events_closed_form=int(np.ceil(out["events_closed_form"])),
                 n_closed_form_evaluable=out["n_closed_form"],
                 n_calibrated_evaluable=out["n_calibrated"],
+                n_calibrated_ci_low=lo, n_calibrated_ci_high=hi,
                 n_enrolled=n_enrol,
                 expected_events=out["confirmed_mean_events"],
                 confirmed_power=out["confirmed_power"],
@@ -138,8 +155,12 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
                     f"({design.test_label()}{design.adjustment_label()}), about "
                     f"{out['confirmed_mean_events']:.0f} events are required: "
                     f"N = {out['n_calibrated']} evaluable / {n_enrol} enrolled patients "
-                    f"(simulation-confirmed power {out['confirmed_power']:.0%}; "
-                    f"closed-form N = {design.enrolled(out['n_closed_form'])} enrolled)."
+                    f"(simulation-calibrated{ci_txt}; confirmed power "
+                    f"{out['confirmed_power']:.0%}; closed-form N = "
+                    f"{design.enrolled(out['n_closed_form'])} enrolled)."
+                    + (" The interval contains the closed-form N, so the calibration does not "
+                       "resolve a difference from it; increase --n-sims-grid to do so."
+                       if unresolved else "")
                     + (f" A median-split analysis would need ~{n_dich} enrolled."
                        if design.n_covariates == 0 else "")
                 ),
@@ -175,6 +196,7 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
                 n_enrolled=n, n_evaluable=n_eval, target_power=pw, censor_rate=round(cr, 3),
                 hr_closed_form_per_sd=out["hr_closed_form"],
                 hr_detectable_per_sd=hr_sd,
+                hr_ci_low=out["hr_ci_low"], hr_ci_high=out["hr_ci_high"],
                 hr_detectable_protective_per_sd=round(1 / hr_sd, 4),
                 c_detectable=round(c_of_beta(np.log(hr_sd)), 4),
             )
@@ -276,7 +298,7 @@ def run_cindex_benchmark_mode(design: StudyDesign, cs: list, c0s: list,
                     n_eval = out["n_calibrated"]
                     if n_eval < MIN_N_FOR_C_TESTS:
                         warnings.warn(f"N = {n_eval} is below {MIN_N_FOR_C_TESTS}: the SE of C is "
-                                      "anti-conservative there (Appendix B, Table B2)")
+                                      "anti-conservative there (Appendix B, Table 9)")
                     n_enrol = design.enrolled(n_eval)
                     rows.append(dict(
                         base, target_power=target, n_closed_form_evaluable=n0,

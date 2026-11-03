@@ -65,7 +65,7 @@ Run at the given or solved (N, HR) for hazard-ratio questions.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--sensitivity A [A ...]` | | any of `collinearity`, `epv`, `heterogeneous`, `waning`, `crossing`, `all` |
+| `--sensitivity A [A ...]` | | any of `collinearity`, `epv`, `heterogeneous`, `omitted`, `waning`, `crossing`, `all` |
 | `--tau` | 6 | change-point (months) for `waning` / `crossing` |
 | `--waning-hr` | planning HR | HR before τ in the waning scenario |
 | `--crossing-hr EARLY LATE` | 1/HR, HR | HRs before / after τ in the crossing scenario |
@@ -76,7 +76,7 @@ Run at the given or solved (N, HR) for hazard-ratio questions.
 |---|---|---|
 | `--engine {fast,lifelines}` | fast | Cox fitter for univariate simulations |
 | `--n-sims` | 1000 | replicates per power estimate / confirmation |
-| `--n-sims-grid` | 300 | replicates per calibration grid point |
+| `--n-sims-grid` | 1000 | replicates per calibration grid point |
 | `--n-sims-sensitivity` | 300 | replicates per sensitivity scenario |
 | `--quick` | | 200 / 100 / 100 replicates (for exploring) |
 | `--seed` | 42 | random seed |

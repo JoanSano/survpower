@@ -6,6 +6,7 @@ pair, or at the solved one.
 * collinearity  -- power vs. number of adjustment covariates p at fixed R^2
 * epv           -- bias / variance of the HR at single-digit events-per-variable
 * heterogeneous -- adjustment covariates that are themselves prognostic
+* omitted       -- what leaving prognostic covariates out of the model costs
 * waning        -- effect present only before tau
 * crossing      -- effect reverses direction at tau
 """
@@ -20,6 +21,7 @@ from .baseline import DEFAULT_LAMBDA0, DEFAULT_TAU_MONTHS
 from .closed_form import theoretical_power_with_r2
 from .design import StudyDesign
 from .simulate import (
+    simulate_adjusted_vs_unadjusted,
     simulate_crossing_hazards,
     simulate_epv_diagnostic,
     simulate_power_with_adjustment,
@@ -27,7 +29,7 @@ from .simulate import (
     simulate_waning_effect,
 )
 
-SENSITIVITY_CHOICES = ("collinearity", "epv", "heterogeneous", "waning", "crossing")
+SENSITIVITY_CHOICES = ("collinearity", "epv", "heterogeneous", "omitted", "waning", "crossing")
 
 
 def run_collinearity_study(
@@ -82,20 +84,43 @@ def run_epv_stress_test(
     r2_target: float = 0.3,
     p_grid: tuple = (0, 5, 10, 20, 40, 60, 80),
     lambda0: float = DEFAULT_LAMBDA0,
-    n_sims: int = 300,
+    n_sims: int = 1000,
     seed: int = 10_000,
     alpha: float = 0.05,
     sides: int = 2,
 ) -> pd.DataFrame:
-    """Bias and estimation variance of X's coefficient as p grows, pushing
-    events-per-variable into single digits (report Section 9.5, Figure 3)."""
+    """Bias (log-HR scale), SD vs. model SE, nominal power, type-I error and
+    size-adjusted power for X as p grows, pushing events-per-variable into
+    single digits (report Section 9.5, Table 3, Figure 3)."""
     rows = [simulate_epv_diagnostic(
         n=n, hr=hr, censor_rate=censor_rate, p=p, r2_target=r2_target, lambda0=lambda0,
         n_sims=n_sims, alpha=alpha, sides=sides, seed=seed + 1000 * i,
     ) for i, p in enumerate(p_grid)]
-    cols = ["p", "epv", "mean_events", "power", "mean_HR_hat", "median_HR_hat",
-            "sd_beta_hat", "frac_unstable"]
+    cols = ["p", "epv", "mean_events", "power", "type1_error", "size_adj_power", "bias_beta",
+            "bias_beta_mcse", "median_HR_hat", "mean_HR_hat", "sd_beta_hat", "mean_se",
+            "frac_unstable"]
     return pd.DataFrame(rows)[cols]
+
+
+def run_omitted_covariates_study(
+    n: int = 1200,
+    hr: float = 1.10,
+    censor_rate: float = 0.20,
+    p: int = 5,
+    sigma_z_grid: tuple = (0.0, 0.3, 0.6, 1.0),
+    lambda0: float = DEFAULT_LAMBDA0,
+    n_sims: int = 1000,
+    seed: int = 20_000,
+    alpha: float = 0.05,
+    sides: int = 2,
+) -> pd.DataFrame:
+    """Adjusted vs. unadjusted analysis when p prognostic covariates are
+    independent of X (report Section 10.4, Table 5): omitting them
+    attenuates the HR (non-collapsibility) and costs power."""
+    return pd.DataFrame([simulate_adjusted_vs_unadjusted(
+        n=n, hr=hr, censor_rate=censor_rate, p=p, sigma_z=s, lambda0=lambda0, n_sims=n_sims,
+        alpha=alpha, sides=sides, seed=seed + 137 * i,
+    ) for i, s in enumerate(sigma_z_grid)])
 
 
 def run_heterogeneous_adjustment_study(
@@ -177,6 +202,9 @@ def run_sensitivity(
         if plots:
             plotting.plot_heterogeneous_adjustment(
                 df, outpath=os.path.join(outdir, f"informative_adjustment_{tag}.pdf"))
+    if "omitted" in which:
+        results["omitted"] = run_omitted_covariates_study(
+            p=max(design.n_covariates, 5), seed=design.seed + 20_000, **common)
     if "waning" in which:
         out = simulate_waning_effect(
             n=n, hr_early=waning_hr or hr, tau=tau, censor_rate=cr, lambda0=design.lambda0,

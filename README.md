@@ -39,7 +39,7 @@ pip install -e ".[dev,docs]"
 Design options: `--median-os`, `--censor-rate` or `--accrual-months/--followup-months/--dropout`,
 `--non-evaluable`, `--n-covariates/--r2`, `--sides`, `--biomarker-sd`,
 `--c-estimator {harrell,uno}`, `--c-tau`. Sensitivity analyses:
-`--sensitivity collinearity epv heterogeneous waning crossing`. See
+`--sensitivity collinearity epv heterogeneous omitted waning crossing`. See
 `survpower --help` and [`examples/grant_recipes.sh`](examples/grant_recipes.sh).
 
 From Python:
@@ -69,11 +69,11 @@ src/survpower/
   design.py        StudyDesign: the shared design assumptions
   planning.py      the solve-for-X modes behind the CLI
   concordance.py   C <-> HR, Harrell / Uno estimators with SEs, concordance power
-  closed_form.py   Schoenfeld / Hsieh-Lloyd and median-split formulas
-  calibration.py   simulation-calibrated N and detectable HR (+ small-N scan)
-  simulate.py      Monte Carlo engines (PH, adjusted, prognostic covariates, non-PH)
+  closed_form.py   Schoenfeld / Hsieh-Lavori, Freedman and median-split formulas
+  calibration.py   simulation-calibrated N / HR with bootstrap MC intervals (+ small-N scan)
+  simulate.py      Monte Carlo engines (PH, dichotomized, adjusted, omitted covariates, non-PH)
   censoring.py     censoring calibration and the accrual calendar
-  sensitivity.py   collinearity / EPV / heterogeneous / waning / crossing studies
+  sensitivity.py   collinearity / EPV / heterogeneous / omitted / waning / crossing studies
   fitting.py       fast univariate Cox solver, Wald decisions
   dgp.py, baseline.py, plotting.py, report.py, cli.py
 tests/             pytest suite, incl. exact regression vs. the original script
@@ -83,7 +83,7 @@ docs/              MkDocs sources
 ## Reproducing the report
 
 ```bash
-survpower report --outdir report_out             # main report (exact, ~10-15 min)
+survpower report --outdir report_out             # main report (revised Nov 2026)
 survpower report --appendix-b --outdir appB_out  # Appendix B (concordance)
 ```
 

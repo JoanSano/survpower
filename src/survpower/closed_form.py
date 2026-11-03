@@ -1,12 +1,17 @@
 """Closed-form (asymptotic) power and sample-size formulas.
 
-* Continuous covariate: Schoenfeld (1983) / Hsieh & Lloyd (1998), report
-  Section 8.1. Information for beta is ~ D * sigma_x^2 * (1 - R^2), where D is
-  the number of events and R^2 the multiple correlation of X with the
-  adjustment covariates. Mildly optimistic at small N or large effects --
-  use the simulation-calibrated versions in `survpower.calibration`.
-* Dichotomized (median-split) covariate: Schoenfeld/Freedman two-group
-  formula via lifelines (report Sections 5-6).
+* Continuous covariate: Schoenfeld (1983), with the (1 - R^2) variance
+  inflation of Hsieh, Bloch & Larsen (1998) extended to the Cox model with
+  non-binary covariates by Hsieh & Lavori (2000) (report Section 8.1).
+  Information for beta is ~ D * sigma_x^2 * (1 - R^2), where D is the number
+  of events and R^2 the multiple correlation of X with the adjustment
+  covariates. Slightly optimistic, and badly so at large effects -- use the
+  simulation-calibrated versions in `survpower.calibration`.
+* Dichotomized (median-split) covariate: the Freedman (1982) and Schoenfeld
+  (1983) two-group formulas (report Sections 5-6). lifelines'
+  `power_under_cph` implements Freedman's. With the plug-in group HR,
+  Schoenfeld's is algebraically the asymptotic-relative-efficiency
+  prediction: a median split keeps 2/pi of the information.
 
 All functions are scale-invariant to the baseline hazard lambda0.
 """
@@ -108,18 +113,37 @@ def _two_sided_alpha(alpha: float, sides: int) -> float:
     return alpha * (2 if sides == 1 else 1)
 
 
+def schoenfeld_two_group_power(n_exp: int, n_con: int, p_exp: float, p_con: float,
+                               hr: float, alpha: float = 0.05) -> float:
+    """Schoenfeld (1983) two-group power: Phi(sqrt(k m)/(1 + k) |log HR| - z),
+    with m expected events and allocation ratio k = n_exp / n_con (two-sided)."""
+    k = n_exp / n_con
+    m = n_exp * p_exp + n_con * p_con
+    return float(norm.cdf(np.sqrt(k * m) / (1 + k) * abs(np.log(hr)) - norm.ppf(1 - alpha / 2)))
+
+
+DICHOTOMIZED_METHODS = ("freedman", "schoenfeld")
+
+
 def dichotomized_power(n: int, hr_per_sd: float, censor_rate: float,
-                       alpha: float = 0.05, sides: int = 2) -> float:
-    """Closed-form power of a median-split analysis with n subjects."""
+                       alpha: float = 0.05, sides: int = 2, method: str = "freedman") -> float:
+    """Closed-form power of a median-split analysis with n subjects
+    (Freedman 1982, as in lifelines, or Schoenfeld 1983; they differ by at
+    most ~0.003 at the HRs of the report, Freedman's always slightly lower)."""
     ghr, p_con, p_exp = dichotomized_design(hr_per_sd, censor_rate)
-    return float(power_under_cph(n // 2, n - n // 2, p_exp, p_con, ghr,
-                                 alpha=_two_sided_alpha(alpha, sides)))
+    a2 = _two_sided_alpha(alpha, sides)
+    if method == "schoenfeld":
+        return schoenfeld_two_group_power(n // 2, n - n // 2, p_exp, p_con, ghr, alpha=a2)
+    return float(power_under_cph(n // 2, n - n // 2, p_exp, p_con, ghr, alpha=a2))
 
 
 def dichotomized_sample_size(power: float, hr_per_sd: float, censor_rate: float,
-                             alpha: float = 0.05, sides: int = 2) -> int:
-    """Total N for a median-split analysis to reach `power`."""
+                             alpha: float = 0.05, sides: int = 2, method: str = "freedman") -> int:
+    """Total N for a median-split analysis to reach `power` (1:1 split)."""
     ghr, p_con, p_exp = dichotomized_design(hr_per_sd, censor_rate)
-    n_exp, n_con = sample_size_necessary_under_cph(
-        power, 1.0, p_exp, p_con, ghr, alpha=_two_sided_alpha(alpha, sides))
+    a2 = _two_sided_alpha(alpha, sides)
+    if method == "schoenfeld":
+        events = 4 * (norm.ppf(1 - a2 / 2) + norm.ppf(power)) ** 2 / np.log(ghr) ** 2
+        return int(2 * np.ceil(events / (p_con + p_exp)))  # events = (N/2)(p_con + p_exp)
+    n_exp, n_con = sample_size_necessary_under_cph(power, 1.0, p_exp, p_con, ghr, alpha=a2)
     return int(n_exp + n_con)

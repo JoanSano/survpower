@@ -28,11 +28,13 @@ Every result row includes a ready-to-paste sentence for the protocol or grant:
 
 ## Why simulation, not only formulas
 
-The textbook Schoenfeld/Hsieh–Lloyd formula is a fast starting point, but it is
-optimistic: by 1–3% in N at small hazard ratios, and by up to **50%** at large
-effects (C ≈ 0.70: the formula says N = 14, the truth is N ≈ 21). `survpower`
+The textbook Schoenfeld / Hsieh–Lavori formula is a fast starting point, but it
+is optimistic: by under one percentage point of power (about 2% in N) at small
+hazard ratios, and by about **50%** in N at large effects (C ≈ 0.70: the formula
+says N = 14, the truth is N ≈ 21). `survpower`
 anchors on the closed form, then **calibrates against simulation of the exact
-analysis** and confirms the answer with an independent run. See
+analysis**, reports the Monte Carlo uncertainty of the calibrated N, and
+confirms the answer with an independent run. See
 [How the simulations work](concepts/methods.md).
 
 ## Installation

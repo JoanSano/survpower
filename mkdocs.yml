@@ -32,6 +32,7 @@ nav:
       - How the simulations work: concepts/methods.md
   - Python API: api.md
   - Reproducing the report: reproducing-the-report.md
+  - References: references.md
   - Changelog: changelog.md
 
 markdown_extensions:

@@ -39,6 +39,27 @@ def fit_probit_line(x, powers, n_sims_per_point: int) -> tuple[float, float]:
     return float(a_hat), float(b_hat)
 
 
+def bootstrap_probit_inverse(x, powers, n_sims_per_point: int, target_power: float,
+                             transform: Callable = np.square, n_boot: int = 4000,
+                             seed: int = 0, level: float = 0.95) -> tuple[float, float]:
+    """Monte Carlo uncertainty of a probit-calibrated solution (report
+    Section 8.3, step 6). Binomial counts at each grid point are resampled
+    (parametric bootstrap), the WLS line refitted and inverted for the
+    target; returns the percentile interval of transform(x*) -- x* squared
+    for N (x = sqrt N), exp(x*) for an HR (x = log HR)."""
+    rng = np.random.default_rng(seed)
+    p = np.asarray(powers, dtype=float)
+    z = norm.ppf(target_power)
+    draws = np.full(n_boot, np.nan)
+    for i in range(n_boot):
+        p_b = rng.binomial(n_sims_per_point, p) / n_sims_per_point
+        a, b = fit_probit_line(x, p_b, n_sims_per_point)
+        if a > 0:
+            draws[i] = transform((z - b) / a)
+    lo, hi = np.nanpercentile(draws, [50 * (1 - level), 50 * (1 + level)])
+    return float(lo), float(hi)
+
+
 def calibrate_sample_size(
     power_fn: PowerFn,
     n0: int,
@@ -55,13 +76,17 @@ def calibrate_sample_size(
 
     1. Grid N0 x {0.6, 0.8, 1.0, 1.2, 1.4} (or `n_grid`).
     2. Simulated power at each point; WLS fit of Phi^-1(power) = a sqrt(N) + b.
-    3. Invert for the target; confirm with `confirm_n_sims` replicates.
+    3. Invert for the target, with a 95% parametric-bootstrap interval for N*
+       (`n_ci_low`, `n_ci_high`); confirm with `confirm_n_sims` replicates.
     4. If the calibrated N < `scan_below`, replace steps 3-4 by a direct scan
        of `scan_points` integers in [0.7 N*, 1.5 N*] at `confirm_n_sims`
        replicates each, keeping the smallest N reaching the target.
 
-    Returns a dict with n_calibrated, a_hat, b_hat, grid, confirmed_power,
-    confirmed_mean_events and method ("probit" or "scan").
+    A calibrated N* whose interval contains the closed-form N0 has not
+    resolved a difference from it: increase `n_sims_per_point`.
+
+    Returns a dict with n_calibrated, n_ci_low, n_ci_high, a_hat, b_hat, grid,
+    confirmed_power, confirmed_mean_events and method ("probit" or "scan").
     """
     if n_grid is None:
         n_grid = sorted({max(int(round(n0 * f)), min_n) for f in (0.6, 0.8, 1.0, 1.2, 1.4)})
@@ -84,8 +109,13 @@ def calibrate_sample_size(
             n_star = int(n0)
     n_star = max(n_star, min_n)
 
+    ci = (float("nan"), float("nan"))
+    if len(n_grid) >= 2 and a_hat > 0 and n_star >= scan_below:
+        lo_, hi_ = bootstrap_probit_inverse(np.sqrt(n_grid), powers, n_sims_per_point,
+                                            target_power, seed=seed + 31)
+        ci = (float(np.ceil(lo_)), float(np.ceil(hi_)))
     out = dict(n0=int(n0), n_calibrated=n_star, a_hat=round(a_hat, 5), b_hat=round(b_hat, 5),
-               grid=grid, method="probit")
+               n_ci_low=ci[0], n_ci_high=ci[1], grid=grid, method="probit")
     if n_star < scan_below:
         lo, hi = max(min_n, int(np.floor(0.7 * n_star))), int(np.ceil(1.5 * n_star))
         candidates = sorted({int(round(v)) for v in np.linspace(lo, hi, scan_points)})
@@ -146,6 +176,7 @@ def estimate_required_n_by_simulation(
         hr=hr, target_power=target_power,
         events_closed_form=round(D0, 1),
         n_closed_form=N0, n_calibrated=out["n_calibrated"],
+        n_ci_low=out["n_ci_low"], n_ci_high=out["n_ci_high"],
         a_hat=out["a_hat"], b_hat=out["b_hat"],
         grid=out["grid"],
         confirmed_power=out["confirmed_power"],
@@ -189,12 +220,15 @@ def estimate_detectable_hr_by_simulation(
                          mean_events=round(mean_ev, 1)))
 
     a_hat, b_hat = fit_probit_line(betas, powers, n_sims_per_point)
+    ci = (float("nan"), float("nan"))
     if a_hat <= 0:
         warnings.warn(f"N={n}: simulated power does not increase over the HR grid; "
                       "falling back to the closed-form HR. Increase n_sims.")
         hr_calibrated = hr0
     else:
         hr_calibrated = float(np.exp((norm.ppf(target_power) - b_hat) / a_hat))
+        ci = bootstrap_probit_inverse(betas, powers, n_sims_per_point, target_power,
+                                      transform=np.exp, seed=seed + 31)
 
     confirm_power, confirm_events = simulate_power_design(
         n=n, hr=hr_calibrated, censor_rate=censor_rate, p=p, r2_target=r2_target,
@@ -204,6 +238,7 @@ def estimate_detectable_hr_by_simulation(
     return dict(
         n=n, target_power=target_power,
         hr_closed_form=round(hr0, 4), hr_calibrated=round(hr_calibrated, 4),
+        hr_ci_low=round(ci[0], 4), hr_ci_high=round(ci[1], 4),
         a_hat=round(a_hat, 5), b_hat=round(b_hat, 5),
         grid=grid,
         confirmed_power=round(confirm_power, 3),

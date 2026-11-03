@@ -54,7 +54,7 @@ class StudyDesign:
     c_tau: float | None = None
     engine: str = "fast"
     n_sims: int = 1000
-    n_sims_grid: int = 300
+    n_sims_grid: int = 1000
     seed: int = 42
 
     @property

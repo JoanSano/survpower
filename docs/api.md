@@ -8,11 +8,11 @@ re-exported from the top-level package (`from survpower import ...`).
 | `survpower.design` | `StudyDesign`, the shared design assumptions |
 | `survpower.planning` | the solve-for-X planning modes behind the CLI |
 | `survpower.concordance` | C ↔ HR mapping, Harrell / Uno estimators with SEs, concordance power |
-| `survpower.closed_form` | Schoenfeld / Hsieh–Lloyd and median-split formulas |
-| `survpower.calibration` | simulation-calibrated N and detectable HR |
-| `survpower.simulate` | Monte Carlo power engines (PH, adjusted, non-PH) |
+| `survpower.closed_form` | Schoenfeld / Hsieh–Lavori, Freedman and median-split formulas |
+| `survpower.calibration` | simulation-calibrated N and detectable HR, with bootstrap MC intervals |
+| `survpower.simulate` | Monte Carlo power engines (PH, dichotomized, adjusted, omitted covariates, non-PH) |
 | `survpower.censoring` | censoring calibration and the accrual calendar |
-| `survpower.sensitivity` | collinearity, EPV, prognostic-covariate and non-PH studies |
+| `survpower.sensitivity` | collinearity, EPV, prognostic / omitted covariate and non-PH studies |
 | `survpower.fitting` | fast univariate Cox solver and Wald decisions |
 | `survpower.dgp` | event-time generators |
 | `survpower.baseline` | baseline hazard calibration |
@@ -52,8 +52,9 @@ re-exported from the top-level package (`from survpower import ...`).
 
 ::: survpower.simulate
     options:
-      members: [simulate_power, simulate_power_design, simulate_power_with_adjustment,
-                simulate_epv_diagnostic, simulate_power_with_heterogeneous_adjustment,
+      members: [simulate_power, simulate_power_design, simulate_continuous_vs_dichotomized,
+                simulate_power_with_adjustment, simulate_epv_diagnostic,
+                simulate_power_with_heterogeneous_adjustment, simulate_adjusted_vs_unadjusted,
                 simulate_waning_effect, simulate_crossing_hazards]
 
 ## Censoring

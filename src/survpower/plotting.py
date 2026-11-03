@@ -46,6 +46,9 @@ def plot_calibration_curves(results: list, target_power: float = 0.80,
         ax.axhline(z_target, color=PALETTE[1], lw=1.1, ls="--", alpha=0.8,
                    label=f"target power = {target_power:.2f}")
         sqrt_n_star = np.sqrt(res["n_calibrated"])
+        if np.isfinite(res.get("n_ci_low", np.nan)):
+            ax.axvspan(np.sqrt(res["n_ci_low"]), np.sqrt(res["n_ci_high"]), color=PALETTE[1],
+                       alpha=0.12, lw=0, label=r"95% bootstrap interval for $N^*$")
         ax.axvline(sqrt_n_star, color=PALETTE[1], lw=1.1, ls="--", alpha=0.8)
         ax.scatter([sqrt_n_star], [z_target], color=PALETTE[1], zorder=4, s=55,
                    marker="D", label=fr"$N^*={res['n_calibrated']}$")
@@ -89,26 +92,49 @@ def plot_collinearity_power(df: pd.DataFrame, outpath: str = "collinearity_power
 
 
 def plot_epv_bias(df: pd.DataFrame, true_hr: float, outpath: str = "epv_bias.pdf") -> None:
-    """Bias of the recovered HR and SD of the log-HR vs. p, with EPV on a
-    twin axis (report Figure 3). `df` from `run_epv_stress_test`."""
+    """Low-EPV stress test (report Figure 3): bias of beta_hat with 95% MC
+    intervals; empirical SD of beta_hat vs. mean model SE; nominal power,
+    type-I error and size-adjusted power. EPV on a twin axis. `df` from
+    `run_epv_stress_test`."""
     plt.rcParams.update(_PLOT_STYLE)
-    fig, axes = plt.subplots(1, 2, figsize=(9.6, 4.2))
+    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.2))
     epv_labels = [f"{e:.0f}" if e >= 10 else f"{e:.1f}" for e in df["epv"].values]
-    panels = [("mean_HR_hat", PALETTE[1], "mean recovered HR for $X$", "Bias in the recovered effect"),
-              ("sd_beta_hat", PALETTE[0], r"SD of $\hat\beta_X$ across replicates",
-               "Growing estimation variance")]
-    for ax, (col, color, ylabel, title) in zip(axes, panels):
-        ax.plot(df["p"], df[col], marker="o", color=color, lw=1.4, ms=5)
+    p = df["p"]
+
+    ax = axes[0]
+    ax.errorbar(p, df["bias_beta"], yerr=1.96 * df["bias_beta_mcse"], marker="o", color=PALETTE[1],
+                lw=1.4, ms=5, capsize=3)
+    ax.axhline(0, color="#444444", lw=1.0, ls="--", alpha=0.7)
+    ax.set_ylabel(rf"bias of $\hat\beta_X$ (true $\beta$ = {np.log(true_hr):.3f})")
+    ax.set_title("Bias (log-HR scale)")
+
+    ax = axes[1]
+    ax.plot(p, df["sd_beta_hat"], marker="o", color=PALETTE[0], lw=1.4, ms=5,
+            label=r"empirical SD($\hat\beta_X$)")
+    ax.plot(p, df["mean_se"], marker="s", color=PALETTE[2], lw=1.2, ms=4, ls="--", label="mean model SE")
+    ax.set_ylabel("log-HR scale")
+    ax.set_title("Variance and its estimate")
+    ax.legend(fontsize=8, frameon=False)
+
+    ax = axes[2]
+    ax.plot(p, df["power"], marker="o", color=PALETTE[0], lw=1.4, ms=5, label="nominal power")
+    if "size_adj_power" in df:
+        ax.plot(p, df["size_adj_power"], marker="D", color=PALETTE[1], lw=1.4, ms=5,
+                label="size-adjusted power")
+        ax.plot(p, df["type1_error"], marker="s", color=PALETTE[2], lw=1.2, ms=4, ls="--",
+                label=r"type-I error ($\beta = 0$)")
+        ax.axhline(0.05, color="#888888", lw=0.8, ls=":")
+    ax.set_ylim(0, None)
+    ax.set_title("Rejection rates")
+    ax.legend(fontsize=8, frameon=False)
+
+    for ax in axes:
         ax.set_xlabel("number of adjustment covariates $p$")
-        ax.set_ylabel(ylabel)
-        ax.set_title(title)
         twin = ax.twiny()
         twin.set_xlim(ax.get_xlim())
-        twin.set_xticks(df["p"].values)
+        twin.set_xticks(p.values)
         twin.set_xticklabels(epv_labels, fontsize=7.5)
-        twin.set_xlabel("events per adjustment parameter (EPV)", fontsize=8.5)
-    axes[0].axhline(true_hr, color="#444444", lw=1.0, ls="--", alpha=0.7, label=f"true HR = {true_hr}")
-    axes[0].legend(fontsize=8.5, frameon=False, loc="upper left")
+        twin.set_xlabel("EPV", fontsize=8.5)
     fig.tight_layout()
     fig.savefig(outpath, bbox_inches="tight")
     plt.close(fig)
@@ -144,8 +170,8 @@ def plot_heterogeneous_adjustment(df: pd.DataFrame,
 # --- Appendix B ---------------------------------------------------------------
 
 def plot_concordance_mapping(mapping: pd.DataFrame | None = None, highlight: float = 0.70,
-                             outpath: str = "figB1_concordance_mapping.pdf") -> None:
-    """Exact mapping between per-SD HR and population concordance (Figure B1).
+                             outpath: str = "fig5_concordance_mapping.pdf") -> None:
+    """Exact mapping between per-SD HR and population concordance (report Figure 5).
     `mapping` (optional) has columns C and hr to mark."""
     plt.rcParams.update({**_PLOT_STYLE, "font.size": 9})
     fig, ax = plt.subplots(figsize=(5.2, 3.3))
@@ -170,9 +196,9 @@ def plot_concordance_mapping(mapping: pd.DataFrame | None = None, highlight: flo
 
 
 def plot_cindex_association_power(grid: pd.DataFrame,
-                                  outpath: str = "figB2_association_power.pdf") -> None:
+                                  outpath: str = "fig6_association_power.pdf") -> None:
     """Power to detect association vs. N for several target C: Cox Wald test
-    and the test of C = 0.5 (Figure B2). `grid` has columns C, n, power_cox,
+    and the test of C = 0.5 (report Figure 6). `grid` has columns C, n, power_cox,
     power_c05."""
     plt.rcParams.update({**_PLOT_STYLE, "font.size": 9})
     fig, axs = plt.subplots(1, 2, figsize=(7.2, 3.2), sharey=True)
@@ -193,9 +219,9 @@ def plot_cindex_association_power(grid: pd.DataFrame,
 
 
 def plot_benchmark_power(bench: pd.DataFrame, c_limit: float, sigma: float, alpha: float = 0.05,
-                         outpath: str = "figB3_benchmark_power.pdf") -> None:
-    """Simulated power to show C > C0 vs. N against the closed form (eq. B.6)
-    (Figure B3). `bench` has columns c0, n, power_cc0."""
+                         outpath: str = "fig7_benchmark_power.pdf") -> None:
+    """Simulated power to show C > C0 vs. N against the closed form (eq. 29)
+    (report Figure 7). `bench` has columns c0, n, power_cc0."""
     plt.rcParams.update({**_PLOT_STYLE, "font.size": 9})
     fig, ax = plt.subplots(figsize=(5.2, 3.2))
     z = norm.ppf(1 - alpha)
@@ -206,7 +232,7 @@ def plot_benchmark_power(bench: pd.DataFrame, c_limit: float, sigma: float, alph
                 label=fr"simulated, $H_0: C\leq{c0:.2f}$")
         nn = np.linspace(max(10, sub["n"].min() * 0.8), sub["n"].max() * 1.05, 300)
         ax.plot(nn, norm.cdf((c_limit - c0) * np.sqrt(nn) / sigma - z), "-", color=color, lw=1,
-                label="closed form (B.6)")
+                label="closed form (29)")
     ax.axhline(0.8, ls="--", lw=0.8, color="grey")
     ax.set_xlabel("sample size $N$")
     ax.set_ylabel(f"power (one-sided, $\\alpha={alpha:g}$)")

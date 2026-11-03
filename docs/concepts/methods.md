@@ -29,8 +29,20 @@ Power is approximately probit-linear in \(\sqrt N\):
 1. Anchor on the closed-form \(N_0\); simulate power at \(N_0 \times \{0.6, 0.8, 1, 1.2, 1.4\}\).
 2. Fit \(a, b\) by weighted least squares, with a continuity-corrected probit
    and binomial delta-method weights.
-3. Invert for the target power, giving \(N^*\).
+3. Invert for the target power, giving \(N^*\), and quantify its Monte Carlo
+   uncertainty: resample the binomial counts at each grid point (parametric
+   bootstrap, 4000 resamples), refit and invert. The 95% percentile interval is
+   reported as `n_calibrated_ci_low` / `n_calibrated_ci_high`.
 4. Confirm \(N^*\) with an independent, larger simulation (`--n-sims`).
+
+!!! warning "Report the interval, and check it excludes the closed form"
+    A calibrated N whose interval contains the closed-form N has not been
+    calibrated. The correction it is meant to detect (~2%) is smaller than the
+    noise. At 300 replicates per point the revised report found N* = 1053
+    [1002, 1108] for HR 1.10: wider than the correction. At 2000 per point it
+    was 1107 [1084, 1130]. The default here is 1000 per point; the summary
+    sentence says when the interval contains the closed form. Raise
+    `--n-sims-grid` for the final numbers.
 
 **Small-N fallback.** When \(N^* < 100\) the probit form is unreliable (the
 report's Appendix B: fitted N* = 19 confirmed at only 75.5% for C = 0.70). In
@@ -41,11 +53,15 @@ column says which method was used.
 ## Solving for the detectable effect
 
 Same idea at fixed N: grid over \(\log \mathrm{HR}\) around the closed-form
-value, fit \(\Phi^{-1}(\text{Power}) = a \log \mathrm{HR} + b\), invert, confirm.
+value, fit \(\Phi^{-1}(\text{Power}) = a \log \mathrm{HR} + b\), invert (with a
+bootstrap interval, `hr_ci_low` / `hr_ci_high`), confirm.
 
 ## Reproducibility
 
-Every function takes a seed and draws in a fixed order. `survpower report`
-uses the lifelines engine and the original seeds, and reproduces the report's
-tables exactly. The regression tests pin this against values produced by the
-original script.
+Every function takes a seed and draws in a fixed order. The regression tests
+pin the simulation engines against values produced by the original
+single-file script (exact equality on the same seeds). See
+[Reproducing the report](../reproducing-the-report.md) for which tables match
+digit for digit. Following Burton et al. (2006) and Morris et al. (2019),
+report the seed, the number of replicates and the Monte Carlo SE with any
+simulated quantity.

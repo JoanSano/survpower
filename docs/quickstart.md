@@ -18,8 +18,10 @@ survpower --hr 1.20 --power 0.80 0.90
 ```
 
 Required events and N at each target power: the closed form and the
-simulation-calibrated value, plus the N a median-split (dichotomized) analysis
-would need, for the "why we keep the biomarker continuous" paragraph.
+simulation-calibrated value with its 95% Monte Carlo interval, plus the N a
+median-split (dichotomized) analysis would need, for the "why we keep the
+biomarker continuous" paragraph. A median split keeps only 2/π ≈ 64% of the
+information, equivalent to discarding ~36% of the events.
 
 ## 2. "Is my existing cohort big enough?"
 
@@ -63,7 +65,8 @@ survpower --hr 1.20 --n-covariates 5 --r2 0.3
 `--r2` is the R² of the biomarker regressed on the adjustment covariates (from
 pilot or registry data). Power is lost through this correlation, not through the
 number of covariates. Add `--sensitivity collinearity epv` to check that
-directly. See [Adjustment covariates](concepts/adjustment.md).
+directly. If the covariates are prognostic but nearly independent of the
+biomarker, adjusting for them *increases* power (`--sensitivity omitted`). See [Adjustment covariates](concepts/adjustment.md).
 
 ## 6. The effect is pre-registered as a concordance index
 
@@ -124,6 +127,7 @@ A defensible sample-size paragraph states:
 3. the survival assumptions (median OS, accrual, follow-up, dropout) and the
    resulting **expected number of events**;
 4. that N was obtained by simulation of the planned analysis (`survpower`,
-   seed, number of replicates) and confirmed at the chosen N;
+   seed, number of replicates), with its Monte Carlo interval, and confirmed
+   at the chosen N;
 5. the inflation for non-evaluable patients;
 6. a sensitivity analysis, e.g. smaller effect, waning effect.

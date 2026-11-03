@@ -49,7 +49,18 @@ simulation under the anticipated alternative:
 * weighted log-rank tests (Fleming–Harrington G^ρ,γ);
 * time-varying coefficients (X × log t, or a step function at τ);
 * landmark / milestone survival;
-* competing-risks models (Fine–Gray or cause-specific) when non-tumour deaths matter.
+* weighted Cox regression for a well-defined average HR (Schemper et al., 2009),
+  with robust sandwich variances (Lin & Wei, 1989).
+
+Their power is not evaluated by `survpower`; their relative merits depend on
+the pattern of non-proportionality (Lin et al., 2020).
+
+!!! note "Competing risks"
+    For overall survival, death from any cause is the event and there are no
+    competing risks. They arise for cause-specific endpoints and for
+    progression. There, a Cox model that censors competing events estimates the
+    cause-specific hazard. A Fine–Gray model estimates the subdistribution hazard.
+    Cumulative incidence should use the Aalen–Johansen estimator, not 1 − KM.
 
 The concordance remains well defined under non-PH, but it depends on follow-up.
 Use Uno's C with a fixed horizon (`--c-estimator uno --c-tau ...`).

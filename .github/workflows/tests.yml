@@ -1,4 +1,6 @@
-# Run the test suite on Linux and macOS, oldest and newest supported Python.
+# Run the test suite on Linux and macOS, oldest and newest available Python.
+# (GitHub's Ubuntu 26.04 runners no longer ship the end-of-life Python 3.9,
+# so Linux starts at 3.10; macOS still covers 3.9.)
 name: tests
 
 on:
@@ -12,14 +14,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ["3.9", "3.13"]
+        include:
+          - { os: ubuntu-latest, python-version: "3.10" }
+          - { os: ubuntu-latest, python-version: "3.13" }
+          - { os: macos-latest, python-version: "3.9" }
+          - { os: macos-latest, python-version: "3.13" }
     runs-on: ${{ matrix.os }}
     env:
       TQDM_DISABLE: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"

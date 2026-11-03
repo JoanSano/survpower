@@ -18,7 +18,3 @@ def wilson_ci(p_hat: float, n: int, z: float = 1.96) -> tuple[float, float]:
     half = z * np.sqrt(p_hat * (1 - p_hat) / n + z ** 2 / (4 * n ** 2)) / denom
     return float(centre - half), float(centre + half)
 
-
-def mc_se(p_hat: float, n: int) -> float:
-    """Monte Carlo standard error of a simulated proportion."""
-    return float(np.sqrt(max(p_hat * (1 - p_hat), 1e-12) / n))

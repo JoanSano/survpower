@@ -63,7 +63,9 @@ def run_collinearity_study(
                 alpha=alpha, sides=sides), 3)
             rows.append(out)
             combo_id += 1
-    cols = ["n", "r2_target", "p", "mean_events", "power", "theoretical_power", "mean_HR_hat"]
+    cols = ["n", "r2_target", "p", "mean_events", "power", "power_mcse", "theoretical_power",
+            "mean_HR_hat", "mean_HR_hat_mcse", "bias_beta", "bias_beta_mcse", "emp_se",
+            "emp_se_mcse", "mean_model_se", "coverage", "coverage_mcse", "n_sims", "n_failed"]
     return pd.DataFrame(rows)[cols]
 
 
@@ -96,9 +98,10 @@ def run_epv_stress_test(
         n=n, hr=hr, censor_rate=censor_rate, p=p, r2_target=r2_target, lambda0=lambda0,
         n_sims=n_sims, alpha=alpha, sides=sides, seed=seed + 1000 * i,
     ) for i, p in enumerate(p_grid)]
-    cols = ["p", "epv", "mean_events", "power", "type1_error", "size_adj_power", "bias_beta",
-            "bias_beta_mcse", "median_HR_hat", "mean_HR_hat", "sd_beta_hat", "mean_se",
-            "frac_unstable"]
+    cols = ["p", "epv", "mean_events", "power", "power_mcse", "type1_error", "type1_error_mcse",
+            "size_adj_power", "size_adj_power_mcse", "bias_beta", "bias_beta_mcse",
+            "median_HR_hat", "mean_HR_hat", "mean_HR_hat_mcse", "sd_beta_hat", "sd_beta_hat_mcse",
+            "mean_se", "mean_se_mcse", "frac_unstable", "n_sims"]
     return pd.DataFrame(rows)[cols]
 
 
@@ -151,8 +154,10 @@ def run_heterogeneous_adjustment_study(
     df = pd.DataFrame(rows)
     df["theoretical_power"] = round(theoretical_power_with_r2(
         n=n, hr=hr, censor_rate=censor_rate, r2_target=r2_target, alpha=alpha, sides=sides), 3)
-    cols = ["p", "r2_target", "sigma_z", "n", "mean_events", "power", "theoretical_power",
-            "mean_HR_hat", "median_abs_HRz_realized", "n_sims"]
+    cols = ["p", "r2_target", "sigma_z", "n", "mean_events", "power", "power_mcse",
+            "theoretical_power", "mean_HR_hat", "mean_HR_hat_mcse", "bias_beta", "bias_beta_mcse",
+            "emp_se", "emp_se_mcse", "coverage", "coverage_mcse", "median_abs_HRz_realized",
+            "n_sims", "n_failed"]
     return df[cols]
 
 

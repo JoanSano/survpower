@@ -50,7 +50,8 @@ def test_required_n():
 
 def test_adjustment():
     out = simulate_power_with_adjustment(250, 1.1, 0.2, 2, 0.3, n_sims=25, seed=5)
-    assert out == {"p": 2, "r2_target": 0.3, "power": 0.12, "mean_events": 201.1, "mean_HR_hat": 1.08}
+    expected = {"p": 2, "r2_target": 0.3, "power": 0.12, "mean_events": 201.1, "mean_HR_hat": 1.08}
+    assert {k: out[k] for k in expected} == expected  # MCSE columns are extra keys
 
 
 def test_heterogeneous_adjustment():

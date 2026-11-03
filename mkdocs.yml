@@ -1,0 +1,61 @@
+site_name: survpower
+site_description: Power and sample-size planning for continuous biomarkers under the Cox model
+repo_name: survpower
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle: { icon: material/brightness-7, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle: { icon: material/brightness-4, name: Light mode }
+
+nav:
+  - Home: index.md
+  - Quickstart (grant & trial recipes): quickstart.md
+  - Command-line reference: cli.md
+  - Concepts:
+      - Effect sizes (HR and concordance): concepts/effect-sizes.md
+      - Censoring, accrual and attrition: concepts/censoring-and-accrual.md
+      - Adjustment covariates: concepts/adjustment.md
+      - Concordance questions: concepts/concordance.md
+      - Non-proportional hazards: concepts/ph-violations.md
+      - How the simulations work: concepts/methods.md
+  - Python API: api.md
+  - Reproducing the report: reproducing-the-report.md
+  - Changelog: changelog.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.arithmatex: { generic: true }
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            show_source: false
+            show_root_heading: true
+            members_order: source
+            heading_level: 3

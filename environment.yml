@@ -1,0 +1,22 @@
+# Conda environment for survpower (works with conda, mamba and micromamba).
+#   conda env create -f environment.yml
+#   conda activate survpower
+name: survpower
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.9
+  - numpy>=1.22
+  - scipy>=1.8
+  - pandas>=1.4
+  - lifelines>=0.27
+  - matplotlib>=3.5
+  - tqdm>=4.60
+  - pytest>=7
+  # documentation site (optional)
+  - mkdocs>=1.5,<2
+  - mkdocs-material>=9
+  - mkdocstrings-python
+  - pip
+  - pip:
+      - -e .   # survpower itself, editable, from this folder

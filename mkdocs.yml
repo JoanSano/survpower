@@ -1,6 +1,8 @@
 site_name: survpower
 site_description: Power and sample-size planning for continuous biomarkers under the Cox model
-repo_name: survpower
+site_url: https://joansano.github.io/survpower/
+repo_url: https://github.com/JoanSano/survpower
+repo_name: JoanSano/survpower
 
 theme:
   name: material
@@ -42,6 +44,7 @@ markdown_extensions:
   - toc: { permalink: true }
   - pymdownx.details
   - pymdownx.superfences
+  - pymdownx.tabbed: { alternate_style: true }
   - pymdownx.arithmatex: { generic: true }
 
 extra_javascript:

@@ -1,5 +1,10 @@
 # survpower
 
+[![tests](https://github.com/JoanSano/survpower/actions/workflows/tests.yml/badge.svg)](https://github.com/JoanSano/survpower/actions/workflows/tests.yml)
+[![docs](https://github.com/JoanSano/survpower/actions/workflows/docs.yml/badge.svg)](https://joansano.github.io/survpower/)
+
+**Documentation: https://joansano.github.io/survpower/**
+
 Power and sample-size planning for a **continuous biomarker** analysed with a
 **Cox proportional-hazards model**, built for grant applications, protocols and
 clinical-trial design. Effect sizes can be a hazard ratio (per SD or per raw
@@ -21,10 +26,32 @@ $ survpower --c-index 0.55 0.60 0.70
 
 ## Install
 
+Requires Python ≥ 3.9 (tested on 3.9 to 3.14) on macOS or Linux.
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev,docs]"
+git clone https://github.com/JoanSano/survpower.git
+cd survpower
 ```
+
+**With conda** (or mamba / micromamba), using the included `environment.yml`:
+
+```bash
+conda env create -f environment.yml    # all dependencies + survpower (editable)
+conda activate survpower
+```
+
+**With a virtual environment** (venv + pip):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev,docs]"           # drop [dev,docs] for the package only
+```
+
+Or install straight from GitHub without cloning:
+`pip install git+https://github.com/JoanSano/survpower.git`.
+
+Check the install with `survpower --help` and `pytest -q`.
 
 ## Use
 
@@ -51,6 +78,9 @@ print(table.loc[0, "summary"])
 ```
 
 ## Documentation
+
+Online at **https://joansano.github.io/survpower/**, rebuilt automatically on
+every push to `main`. To preview locally:
 
 ```bash
 mkdocs serve      # live site at http://127.0.0.1:8000

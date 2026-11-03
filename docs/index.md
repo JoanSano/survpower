@@ -39,15 +39,38 @@ confirms the answer with an independent run. See
 
 ## Installation
 
+Requires Python ≥ 3.9 (tested on 3.9 to 3.14) on macOS or Linux, with NumPy,
+SciPy, pandas, lifelines and matplotlib.
+
 ```bash
-git clone <this repository> survpower && cd survpower
-python -m venv .venv && source .venv/bin/activate
-pip install -e .            # the package and the `survpower` command
-pip install -e ".[dev]"     # + pytest
-pip install -e ".[docs]"    # + MkDocs, to build this site (mkdocs serve)
+git clone https://github.com/JoanSano/survpower.git
+cd survpower
 ```
 
-Requires Python ≥ 3.9, NumPy, SciPy, pandas, lifelines and matplotlib.
+=== "conda / mamba"
+
+    ```bash
+    conda env create -f environment.yml   # dependencies from conda-forge + survpower
+    conda activate survpower
+    ```
+
+=== "venv + pip"
+
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -e .            # the package and the `survpower` command
+    pip install -e ".[dev]"     # + pytest
+    pip install -e ".[docs]"    # + MkDocs, to build this site (mkdocs serve)
+    ```
+
+=== "pip, no clone"
+
+    ```bash
+    pip install git+https://github.com/JoanSano/survpower.git
+    ```
+
+Check the install with `survpower --help`.
 
 ## Thirty-second tour
 

@@ -108,6 +108,10 @@ def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
                     f"expected events, {cr:.0%} censored), a {design.test_label()} has {power:.0%} power "
                     f"(95% simulation CI {lo:.0%} to {hi:.0%}) to detect a hazard ratio of "
                     f"{design.hr_label(hr_sd)}{design.adjustment_label()}."
+                    + (f" A median-split analysis of the same cohorts would have "
+                       f"{dich_sim:.0%} power." if np.isfinite(dich_sim) else
+                       f" A median-split analysis would have ~{dich['schoenfeld']:.0%} power "
+                       f"(Schoenfeld closed form)." if univariate else "")
                 ),
             ))
             combo += 1
@@ -321,7 +325,8 @@ def run_cindex_benchmark_mode(design: StudyDesign, cs: list, c0s: list,
 
             base = dict(_cindex_columns(design, c, ctx), c0=c0)
             question = (f"a one-sided test at alpha = {design.alpha:g} that the biomarker's "
-                        f"{design.estimator_label()} exceeds {c0:g} (true C = {c:g})")
+                        f"{design.estimator_label()} exceeds {c0:g} (true C = {c:g}, "
+                        f"HR {design.hr_value_label(np.exp(ctx['beta']))})")
             if ns:
                 for n in ns:
                     n_eval = design.evaluable(n)
@@ -405,7 +410,8 @@ def run_cindex_precision_mode(design: StudyDesign, cs: list, half_widths: list |
             row["summary"] = (
                 f"With N = {n_enrol} patients enrolled ({n_eval} evaluable, "
                 f"{ctx['censor_rate']:.0%} censored), the {level:.0%} "
-                f"confidence interval for {design.estimator_label()} (true C = {c:g}) has an "
+                f"confidence interval for {design.estimator_label()} (true C = {c:g}, "
+                f"HR {design.hr_value_label(np.exp(ctx['beta']))}) has an "
                 f"expected half-width of +/-{hw:.3f}"
                 + (f" (simulated: +/-{sim_hw:.3f})" if np.isfinite(sim_hw) else "") + "."
             )

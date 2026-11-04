@@ -22,6 +22,16 @@ def test_power_mode(tmp_path):
     assert list(df["n_enrolled"]) == [200, 400]
     assert df["power_sim"].between(0, 1).all()
     assert df["summary"].str.contains("power").all()
+    assert df["summary"].str.contains("A median-split analysis of the same cohorts").all()
+
+
+def test_power_mode_median_split_closed_form_and_adjusted(tmp_path):
+    df = pd.read_csv(run(tmp_path / "ll", "--hr", "1.25", "--n", "200", "--engine", "lifelines")
+                     / "power_analysis.csv")
+    assert df["summary"].iloc[0].endswith("(Schoenfeld closed form).")
+    df = pd.read_csv(run(tmp_path / "adj", "--hr", "1.25", "--n", "200", "--n-covariates", "2",
+                         "--r2", "0.1") / "power_analysis.csv")
+    assert "median-split" not in df["summary"].iloc[0]
 
 
 def test_sample_size_mode_with_design(tmp_path):
@@ -50,12 +60,15 @@ def test_cindex_benchmark_power_uno(tmp_path):
               "--c-estimator", "uno")
     df = pd.read_csv(out / "cindex_benchmark.csv")
     assert df["estimator"].iloc[0] == "uno" and "tau_months" in df
+    assert f"HR {df['hr_per_sd'].iloc[0]:.3g} per SD" in df["summary"].iloc[0]
 
 
 def test_cindex_precision(tmp_path):
-    out = run(tmp_path, "--c-index", "0.70", "--precision", "0.05", "0.08")
+    out = run(tmp_path, "--c-index", "0.70", "--precision", "0.05", "0.08", "--biomarker-sd", "2")
     df = pd.read_csv(out / "cindex_precision.csv")
     assert df["n_evaluable"].iloc[0] > df["n_evaluable"].iloc[1]
+    hr = df["hr_per_sd"].iloc[0]
+    assert f"HR {hr ** 0.5:.3g} per biomarker unit or {hr:.3g} per SD" in df["summary"].iloc[0]
 
 
 def test_sensitivity_outputs(tmp_path):

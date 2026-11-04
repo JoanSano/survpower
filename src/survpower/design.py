@@ -91,6 +91,12 @@ class StudyDesign:
     def to_per_unit(self, hr_per_sd: float) -> float:
         return hr_per_sd if self.biomarker_sd is None else hr_per_sd ** (1 / self.biomarker_sd)
 
+    def hr_value_label(self, hr_per_sd: float) -> str:
+        """The HR on the user's scale, without the concordance (for C questions)."""
+        if self.biomarker_sd is None:
+            return f"{hr_per_sd:.3g} per SD"
+        return f"{self.to_per_unit(hr_per_sd):.3g} per biomarker unit or {hr_per_sd:.3g} per SD"
+
     def hr_label(self, hr_per_sd: float) -> str:
         c = c_of_beta(np.log(hr_per_sd))
         if self.biomarker_sd is None:

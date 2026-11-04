@@ -49,6 +49,10 @@
   prints the fraction at HR = 1, which no result uses. The censoring page lists
   which HR each planning mode uses, and describes how censoring is generated
   (always exponential; the calendar only sets the fraction).
+- Summaries: the power mode adds the median-split power (simulated on the same
+  cohorts with the fast engine, Schoenfeld closed form otherwise; unadjusted
+  analyses only), and the concordance questions (`--c0`, `--precision`) state the
+  HR the target C implies, per SD and, with `--biomarker-sd`, per unit.
 
 ### Deprecated
 - `survpower.report`, the `survpower report` subcommand and

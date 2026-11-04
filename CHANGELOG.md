@@ -14,6 +14,9 @@
   (`hr_protective_ci_low` / `hr_protective_ci_high`, the reciprocal of the harmful
   interval), and per-unit intervals with `--biomarker-sd`. The summary quotes both
   intervals.
+- `survpower.concordance.mapping_table(levels, censor_rate, design=None)`: the
+  C ↔ per-SD HR table (report Table 8) with calibrated censoring, the Harrell limit
+  and closed-form events / N, moved out of `survpower.report` (#8).
 - `simulate_power(..., details=True)` and `simulate_power_design(..., details=True)`
   return the full dict. The default tuple return is unchanged.
 
@@ -25,6 +28,13 @@
   branch at `/survpower/<branch>/`, with a branch selector in the header.
   Links from before this change redirect to `main/`. `docs/dev/` is never
   published (#2).
+
+### Deprecated
+- `survpower.report`, the `survpower report` subcommand and
+  `scripts/reproduce_report.py` / `scripts/reproduce_appendix_b.py` (#8). Importing
+  the module emits a `DeprecationWarning`; the subcommand prints a notice on stderr.
+  They will be removed in 0.4.0 (#27). To reproduce the report exactly, install the
+  `v0.2.0` tag; tutorials replace them (#12, #26).
 
 ### Removed
 - `survpower._utils.mc_se` (unused; replaced by `survpower.results.proportion_mcse`).

@@ -112,10 +112,17 @@ docs/              MkDocs sources
 
 ## Reproducing the report
 
+`survpower report` and `survpower.report` are **deprecated** and will be removed in
+0.4.0; tutorials covering the same analyses are being written (#12). To regenerate
+the report's numbers exactly, install the `v0.2.0` tag:
+
 ```bash
+pip install "git+https://github.com/JoanSano/survpower.git@v0.2.0"
 survpower report --outdir report_out             # main report (revised Nov 2026)
 survpower report --appendix-b --outdir appB_out  # Appendix B (concordance)
 ```
+
+See [Reproducing the report](https://joansano.github.io/survpower/main/reproducing-the-report/).
 
 ## Tests
 

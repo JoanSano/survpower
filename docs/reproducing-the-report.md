@@ -3,7 +3,22 @@
 The package grew out of the report *Power Analysis for a Continuous Biomarker
 Under the Cox Proportional-Hazards Model: Continuous vs. Dichotomized Analysis,
 Adjustment, Concordance, and Robustness to Non-Proportional Hazards* (revised
-November 3, 2026). Both parts can be regenerated:
+November 3, 2026).
+
+!!! warning "Deprecated: `survpower.report` and `survpower report` are removed in 0.4.0"
+    To regenerate the report's numbers, install the `v0.2.0` tag, the last
+    release made to reproduce it:
+
+    ```bash
+    pip install "git+https://github.com/JoanSano/survpower.git@v0.2.0"
+    ```
+
+    Worked tutorials of the same analyses, with explanations and adjustable
+    parameters, are being written
+    ([#12](https://github.com/JoanSano/survpower/issues/12)). The C ↔ HR table
+    (Table 8) is available as `survpower.concordance.mapping_table`.
+
+With the `v0.2.0` tag installed, both parts can be regenerated:
 
 ```bash
 survpower report --outdir report_out                      # Sections 1-10, Appendix A (~35 min)
@@ -25,7 +40,7 @@ or `python scripts/reproduce_report.py` / `python scripts/reproduce_appendix_b.p
 | Table 5 (omitted prognostic covariates) | `sensitivity.run_omitted_covariates_study` | `table5_omitted_covariates.csv` |
 | Table 6 (waning effect) | `report.run_part2` | `table6_waning_effect.csv` |
 | Table 7 (crossing hazards) | `report.run_part3` | `table7_crossing_hazards.csv` |
-| Table 8, Figure 5 (C ↔ HR) | `report.run_cindex_mapping` | `table8_concordance_mapping.csv`, `fig5_concordance_mapping.pdf` |
+| Table 8, Figure 5 (C ↔ HR) | `concordance.mapping_table` (via `report.run_cindex_mapping`) | `table8_concordance_mapping.csv`, `fig5_concordance_mapping.pdf` |
 | Figure 6 (association power vs. N) | `report.run_cindex_association_grid` | `fig6_association_grid.csv`, `fig6_association_power.pdf` |
 | Table 9 (type-I error of both tests) | `report.run_cindex_null` | `table9_type1_error.csv` |
 | Table 10, Figure 7 (benchmark) | `report.run_cindex_benchmark` | `table10_benchmark_n.csv`, `fig7_benchmark_power.pdf` |

@@ -1,4 +1,8 @@
-"""Regenerate Appendix B (concordance index): python scripts/reproduce_appendix_b.py [outdir] [n_sims]"""
+"""Regenerate Appendix B (concordance index): python scripts/reproduce_appendix_b.py [outdir] [n_sims]
+
+Deprecated: survpower.report is removed in 0.4.0. For exact reproduction install the
+v0.2.0 tag; these scripts will be replaced by tutorials (#12, #26).
+"""
 import sys
 
 from survpower.report import reproduce_appendix_b

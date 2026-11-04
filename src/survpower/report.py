@@ -3,17 +3,22 @@
 `reproduce_report` runs Parts 1-3 with the report's original settings (and
 the lifelines engine, so numbers match the PDF); `reproduce_appendix_b`
 regenerates the concordance-index appendix.
+
+.. deprecated:: 0.3.0
+    This module will be removed in 0.4.0 (#27). To regenerate the report's
+    numbers exactly, install the ``v0.2.0`` tag; the C <-> HR table (Table 8)
+    is now `survpower.concordance.mapping_table`.
 """
 
 from __future__ import annotations
 
 import os
 import time
+import warnings
 
 import numpy as np
 import pandas as pd
 from lifelines.statistics import power_under_cph
-from scipy import stats
 
 from . import plotting
 from .baseline import DEFAULT_LAMBDA0, DEFAULT_MEDIAN_OS_MONTHS, DEFAULT_TAU_MONTHS
@@ -25,6 +30,7 @@ from .concordance import (
     beta_of_c,
     c_of_beta,
     harrell_limit,
+    mapping_table,
     sigma_c,
     simulate_cindex_power,
 )
@@ -38,6 +44,12 @@ from .simulate import (
     simulate_continuous_vs_dichotomized,
     simulate_crossing_hazards,
     simulate_waning_effect,
+)
+
+warnings.warn(
+    "survpower.report is deprecated and will be removed in 0.4.0; to reproduce the report, "
+    "install the v0.2.0 tag (see https://joansano.github.io/survpower/main/reproducing-the-report/)",
+    DeprecationWarning, stacklevel=2,
 )
 
 COHORTS = [(1200, "pooled"), (250, "King's")]
@@ -161,19 +173,15 @@ BENCH_N_GRID = (30, 50, 75, 100, 150, 200, 250, 350, 500, 700)
 
 def run_cindex_mapping(levels=C_LEVELS, censor_rate: float = 0.20,
                        lambda0: float = DEFAULT_LAMBDA0) -> pd.DataFrame:
-    """Table 8: target C, exact beta / HR, calibrated censoring, Harrell
-    limit and closed-form events / N for 80% power (association)."""
-    z = stats.norm.ppf(0.975) + stats.norm.ppf(0.80)
+    """Table 8: `concordance.mapping_table` for the report's HRs (1.10, 1.15)
+    and target C levels, rounded as printed."""
     cs = [c_of_beta(np.log(1.10)), c_of_beta(np.log(1.15))] + list(levels)
-    rows = []
-    for c in cs:
-        b = beta_of_c(c)
-        lam_c = calibrate_censoring_rate(b, censor_rate, lambda0=lambda0)
-        d80 = z ** 2 / b ** 2
-        rows.append(dict(C=round(c, 4), beta=round(b, 4), hr=round(float(np.exp(b)), 3),
-                         lam_c=round(lam_c, 5), harrell_limit=round(harrell_limit(b, lam_c, lambda0), 4),
-                         D80=round(d80, 1), N80_closed_form=int(np.ceil(d80 / (1 - censor_rate)))))
-    return pd.DataFrame(rows)
+    design = None
+    if lambda0 != DEFAULT_LAMBDA0:
+        from .design import StudyDesign
+        design = StudyDesign(median_os=np.log(2.0) / lambda0, censor_rate=censor_rate)
+    df = mapping_table(cs, censor_rate=censor_rate, design=design)
+    return df.round(dict(C=4, beta=4, hr=3, lam_c=5, harrell_limit=4, D80=1))
 
 
 def run_cindex_association_grid(mapping: pd.DataFrame, n_grid=ASSOC_N_GRID, n_sims: int = 1000,

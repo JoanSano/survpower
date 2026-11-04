@@ -17,7 +17,7 @@ re-exported from the top-level package (`from survpower import ...`).
 | `survpower.fitting` | fast univariate Cox solver and Wald decisions |
 | `survpower.dgp` | event-time generators |
 | `survpower.baseline` | baseline hazard calibration |
-| `survpower.report` | reproduction of the report and Appendix B |
+| `survpower.report` | reproduction of the report and Appendix B (deprecated, removed in 0.4.0) |
 | `survpower.plotting` | figures |
 
 ## Design
@@ -36,7 +36,7 @@ re-exported from the top-level package (`from survpower import ...`).
 ::: survpower.concordance
     options:
       members: [c_of_beta, beta_of_c, hr_of_c, beta_of_c_approx, harrell_limit, uno_limit,
-                default_uno_tau, concordance_limit, harrell_c_with_se, uno_c_with_se,
+                default_uno_tau, concordance_limit, mapping_table, harrell_c_with_se, uno_c_with_se,
                 concordance_index, censoring_survival_left, simulate_cindex_power, sigma_c,
                 benchmark_power, benchmark_sample_size, precision_half_width,
                 precision_sample_size]
@@ -82,7 +82,10 @@ re-exported from the top-level package (`from survpower import ...`).
 
 ::: survpower.baseline
 
-## Report reproduction
+## Report reproduction (deprecated)
+
+Importing `survpower.report` emits a `DeprecationWarning`; the module is
+removed in 0.4.0. See [Reproducing the report](reproducing-the-report.md).
 
 ::: survpower.report
 

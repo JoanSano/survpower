@@ -4,9 +4,8 @@ effect sizes.
 
 Quick start::
 
-    from survpower import StudyDesign, run_sample_size_mode
-    df, _ = run_sample_size_mode(StudyDesign(), hrs=[1.15], powers=[0.80])
-    print(df["summary"][0])
+    from survpower import StudyDesign, sample_size
+    print(sample_size(hr=1.15, power=0.80).summary)       # or c_index=0.60
 
 or from the shell: ``survpower --hr 1.15``.
 """
@@ -58,6 +57,8 @@ from .planning import (
     run_detectable_effect_mode,
     run_power_mode,
     run_sample_size_mode,
+    SampleSizeResult,
+    sample_size,
 )
 from .simulate import simulate_power, simulate_power_design
 from . import scenario
@@ -66,6 +67,6 @@ from . import scenario
 from .scenario import Scenario
 from .scenario import simulate as simulate_scenario
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 __all__ = [name for name in dir() if not name.startswith("_")]

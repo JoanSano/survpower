@@ -8,8 +8,21 @@ rejected" in power, and are excluded from the other moments.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 from scipy.stats import norm
+
+
+@dataclass(frozen=True)
+class Estimate:
+    """A Monte Carlo estimate with its Monte Carlo standard error."""
+
+    value: float
+    mcse: float
+
+    def __float__(self) -> float:
+        return float(self.value)
 
 
 def proportion_mcse(p_hat: float, n: int) -> float:

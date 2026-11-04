@@ -8,6 +8,7 @@ repo_name: JoanSano/survpower
 # issue drafts and the roadmap are not published
 exclude_docs: |
   dev/
+  tutorials/README.md
 
 # figures are drawn at build time from the package, not committed
 hooks:
@@ -42,6 +43,9 @@ nav:
       - Concordance questions: concepts/concordance.md
       - Non-proportional hazards: concepts/ph-violations.md
       - How the simulations work: concepts/methods.md
+  - Tutorials:
+      - Continuous vs. median split: tutorials/01_continuous_vs_dichotomized.py
+      - Sample size for a target power: tutorials/02_sample_size_for_target_power.py
   - Python API: api.md
   - Reproducing the report: reproducing-the-report.md
   - References: references.md
@@ -69,6 +73,11 @@ extra_javascript:
 
 plugins:
   - search
+  # tutorials are Jupytext .py files, executed at build time (docs/tutorials/README.md)
+  - mkdocs-jupyter:
+      execute: true
+      include_source: true
+      include: ["tutorials/*.py"]
   - mkdocstrings:
       handlers:
         python:

@@ -107,7 +107,10 @@ how often the Schoenfeld-residual test would flag the problem. See
 ## From Python
 
 ```python
-from survpower import StudyDesign, run_sample_size_mode, run_cindex_benchmark_mode
+from survpower import StudyDesign, sample_size, run_sample_size_mode, run_cindex_benchmark_mode
+
+r = sample_size(hr=1.2, power=0.80)          # or sample_size(c_index=0.60, ...)
+print(r.n_enrolled, r.confirmed_power, r.summary)
 
 design = StudyDesign(accrual_months=36, followup_months=12, dropout_annual=0.05,
                      non_evaluable=0.1)

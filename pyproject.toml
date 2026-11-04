@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "survpower"
-version = "0.2.1"
+version = "0.3.0"
 description = "Power and sample-size planning for continuous biomarkers under the Cox model, with hazard-ratio and concordance-index effect sizes."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -21,7 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
-docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9", "mkdocstrings[python]>=0.24"]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9", "mkdocstrings[python]>=0.24", "mkdocs-jupyter>=0.25", "jupytext>=1.16"]
 
 [project.scripts]
 survpower = "survpower.cli:main"

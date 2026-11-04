@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.3.0 — 2026-11-04
+
+Milestone M1 (foundations): scenario engine (#9), `sample_size()` (#11) and
+executable tutorials (#12).
+
+### Added
+- `survpower.scenario` (provisional): a `Scenario` composes a covariate model, an
+  event-time model, a censoring model and a tuple of analyses; `simulate(scenario,
+  n, ...)` returns one row per analysis with the MCSE columns of
+  `results.summarize_replicates`. Shipped models: `StandardNormal`, `ExponentialPH`,
+  `ExponentialCensoring`, `CoxWald` (fast or lifelines, optionally on the median
+  split) and `LogRank`. A model is any object with the protocol's methods, so new
+  data-generating options need no new simulation loop. Exported as
+  `survpower.Scenario` and `survpower.simulate_scenario` (#9).
+- `sample_size(hr=..., c_index=..., power, design, method)`: one entry point for the
+  required N, given an HR or a population concordance (converted with `hr_of_c`).
+  `method` is `"closed_form"` (Hsieh & Lavori 2000), `"calibrated"` (probit
+  simulation calibration) or `"auto"` (default: calibrated, with a direct integer
+  scan below N = 100 or when the probit slope is not positive). It returns a
+  `SampleSizeResult` with N evaluable / enrolled, events, the closed-form N, the
+  Monte Carlo interval, the confirmed power as an `Estimate` (value and MCSE) and a
+  summary sentence. Tested against Hsieh & Lavori's (2000) multiple-myeloma example
+  as printed in the Stata manual (E/N = 78/106) (#11).
+- `closed_form.sample_size_continuous_cph(..., var_x=)`: the covariate variance, as
+  an alternative to `sigma_x` (#11).
+- `results.Estimate`: a Monte Carlo value with its MCSE (#11).
+- Executable tutorials: Jupytext `.py` files in `docs/tutorials/`, rendered and
+  executed by `mkdocs-jupyter`. First two: continuous vs. median split, and sample
+  size for a target power. A `tutorials` CI job runs each at
+  `SURVPOWER_TUTORIAL_SIMS=50`; `docs/tutorials/README.md` explains how to add one.
+  The `docs` extra gains `mkdocs-jupyter` and `jupytext` (#12).
+- `censoring.calibrate_censoring_for(sampler, target, seed)`: censoring
+  calibration for any event-time generator. The four existing calibrators delegate
+  to it (results unchanged) (#9).
+
+### Changed
+- `run_sample_size_mode` is built on `sample_size(method="auto")`. Its columns and
+  values are unchanged, except when the probit slope over the N grid is not
+  positive: it then scans integers around the closed-form N, instead of reporting
+  the closed-form N with a warning (#11).
+- `simulate_power` and `simulate_continuous_vs_dichotomized` run on the scenario
+  engine. Their signatures and results are unchanged (bit for bit, checked against
+  0.2.1). The guarantee is now "the same seed gives the same result within one
+  installed version"; later releases may change the draw order (#9).
+
+### Removed
+- `tests/test_regression.py`, the exact regression against the original report
+  script. Install the `v0.2.0` tag to reproduce the report (#9).
+
 ## 0.2.1 — 2026-11-04
 
 Milestone M0 (quick wins and Monte Carlo standard errors): #1, #2, #4, #6, #8.

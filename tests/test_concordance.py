@@ -3,6 +3,8 @@ import pandas as pd
 import pytest
 from lifelines import CoxPHFitter
 from lifelines.utils import concordance_index as lifelines_c
+from scipy import stats
+from scipy.special import expit
 
 from survpower.censoring import calibrate_censoring_rate
 from survpower.concordance import (
@@ -11,6 +13,9 @@ from survpower.concordance import (
     beta_of_c_approx,
     c_of_beta,
     censoring_survival_left,
+    concordance_index,
+    concordance_limit,
+    gonen_heller_c_with_se,
     harrell_c_with_se,
     harrell_limit,
     precision_half_width,
@@ -80,7 +85,7 @@ def test_censoring_km_left_limit():
     assert censoring_survival_left(t, d) == pytest.approx([1, 1, 2 / 3, 2 / 3])
 
 
-@pytest.mark.parametrize("method", ["harrell", "uno"])
+@pytest.mark.parametrize("method", ["harrell", "uno", "gonen-heller"])
 def test_se_matches_simulation_sd(method):
     b = beta_of_c(0.70)
     lam_c = calibrate_censoring_rate(b, 0.3)
@@ -118,3 +123,73 @@ def test_type_one_error_near_alpha():
     lam_c = calibrate_censoring_rate(0.0, 0.2)
     r = simulate_cindex_power(120, 0.0, lam_c, n_sims=1500, seed=3)
     assert r["power_cox"] == pytest.approx(0.05, abs=0.02)
+
+
+# --- Gonen-Heller -------------------------------------------------------------
+
+def test_gonen_heller_matches_pairwise_definition():
+    # Gonen & Heller (2005), eq. 3: I(b'x_ji < 0) / (1 + exp(b'x_ji)) summed over both orders
+    rng = np.random.default_rng(0)
+    X, b = rng.standard_normal((40, 2)), np.array([0.7, -0.4])
+    eta = X @ b
+    tot = 0.0
+    for i in range(40):
+        for j in range(i + 1, 40):
+            d = eta[j] - eta[i]
+            tot += (d < 0) / (1 + np.exp(d)) + (-d < 0) / (1 + np.exp(-d))
+    assert gonen_heller_c_with_se(X, b)[0] == pytest.approx(tot / (40 * 39 / 2), rel=1e-12)
+
+
+def test_gonen_heller_gradient_term_matches_finite_differences():
+    rng = np.random.default_rng(1)
+    n, X, b = 150, rng.standard_normal((150, 3)), np.array([0.5, -0.3, 0.2])
+    h = 0.5 * np.std(X @ b, ddof=1) * n ** (-1 / 3)
+
+    def smoothed(beta):
+        D = (X @ beta)[None, :] - (X @ beta)[:, None]
+        F = stats.norm.cdf(-D / h) * expit(-D) + stats.norm.cdf(D / h) * expit(D)
+        np.fill_diagonal(F, 0.0)
+        return F.sum() / (n * (n - 1))
+
+    se0 = gonen_heller_c_with_se(X, b, bandwidth=h)[1]
+    for k, e in enumerate(np.eye(3) * 1e-6):
+        g = (smoothed(b + e) - smoothed(b - e)) / 2e-6
+        cov = np.zeros((3, 3)); cov[k, k] = 1.0
+        se = gonen_heller_c_with_se(X, b, cov, bandwidth=h)[1]
+        assert se ** 2 - se0 ** 2 == pytest.approx(g ** 2, rel=1e-6)
+
+
+@pytest.mark.parametrize("censor_rate", [0.2, 0.6])
+def test_gonen_heller_unbiased_for_population_c_under_censoring(censor_rate):
+    b = beta_of_c(0.70)
+    lam_c = calibrate_censoring_rate(b, censor_rate)
+    r = simulate_cindex_power(300, b, lam_c, n_sims=200, method="gonen-heller", seed=6)
+    assert concordance_limit(b, lam_c, "gonen-heller") == pytest.approx(0.70, abs=1e-9)
+    assert r["mean_c"] == pytest.approx(0.70, abs=4 * r["mean_c_mcse"] + 1e-3)
+
+
+def test_gonen_heller_multivariable_fits_cox_model():
+    rng = np.random.default_rng(2)
+    n = 300
+    X = rng.standard_normal((n, 2))
+    T = rng.exponential(1 / (LAMBDA0 * np.exp(X @ np.array([0.8, 0.4]))))
+    C = rng.exponential(1 / 0.01, n)
+    t, d = np.minimum(T, C), T <= C
+    cph = CoxPHFitter().fit(pd.DataFrame(dict(time=t, event=d, a=X[:, 0], b=X[:, 1])),
+                            "time", "event")
+    c, se = concordance_index(t, d, X, method="gonen-heller")
+    c2, se2 = gonen_heller_c_with_se(X, cph.params_, cph.variance_matrix_)
+    assert c == pytest.approx(c2, abs=1e-6) and se == pytest.approx(se2, rel=1e-4)
+    # the two-covariate model discriminates better than the biomarker alone
+    assert c > concordance_index(t, d, X[:, 0], method="gonen-heller")[0]
+    assert 0 < se < 0.05
+
+
+def test_gonen_heller_univariate_uses_fast_fit_and_is_orientation_free():
+    t, d, x = _cohort(seed=5)
+    c, se = concordance_index(t, d, x, method="gonen-heller")
+    b, se_b = cox_fit_1d(t, d, x)
+    assert (c, se) == pytest.approx(gonen_heller_c_with_se(x, b, se_b ** 2))
+    assert concordance_index(t, d, -x, method="gonen-heller") == pytest.approx((c, se))
+    with pytest.raises(ValueError):
+        gonen_heller_c_with_se(np.ones((10, 2)), [1.0])

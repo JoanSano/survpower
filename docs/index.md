@@ -14,7 +14,7 @@ give *two* of the three linked quantities. `survpower` solves for the third:
 | sample size | the smallest effect detectable with a target power |
 
 The effect size can be a **hazard ratio per SD** of the biomarker (or per raw
-unit), or a **concordance index** (Harrell's or Uno's C). For concordance targets
+unit), or a **concordance index** (Harrell's, Uno's or Gönen–Heller's C). For concordance targets
 `survpower` also answers two questions that a hazard ratio cannot: *does the
 biomarker beat a benchmark C₀?* and *how precisely will C be estimated?*
 

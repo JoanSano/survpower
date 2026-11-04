@@ -98,7 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--precision", type=float, nargs="+",
                    help="target 95%% CI half-width(s) for the estimated C")
     c.add_argument("--c-estimator", choices=ESTIMATORS, default="harrell",
-                   help="concordance estimator for benchmark / precision questions")
+                   help="concordance estimator for benchmark / precision questions "
+                        "(gonen-heller: model-based, unaffected by censoring)")
     c.add_argument("--c-tau", type=float, default=None,
                    help="truncation horizon (months) for Uno's C [default: 90th percentile "
                         "of observed follow-up]")

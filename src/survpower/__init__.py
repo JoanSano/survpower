@@ -38,6 +38,8 @@ from .concordance import (
     c_of_beta,
     concordance_index,
     concordance_limit,
+    fit_cox_coefficients,
+    gonen_heller_c_with_se,
     harrell_c_with_se,
     harrell_limit,
     hr_of_c,

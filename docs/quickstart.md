@@ -81,7 +81,8 @@ These three questions need very different sample sizes for the same C = 0.70:
 about **21**, **230** and **150** patients respectively (20% censoring).
 State which one your study answers. See
 [Concordance questions](concepts/concordance.md). Use
-`--c-estimator uno` for Uno's censoring-robust C.
+`--c-estimator uno` for Uno's censoring-robust C, or `--c-estimator gonen-heller`
+for the model-based Gönen–Heller C.
 
 ## 7. Per-unit instead of per-SD effects
 

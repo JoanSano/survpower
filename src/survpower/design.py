@@ -31,7 +31,8 @@ class StudyDesign:
                        biomarker on them.
     biomarker_sd     : if set, user-facing HRs are per raw unit and convert
                        to per-SD as HR ** biomarker_sd.
-    c_estimator      : "harrell" or "uno" for concordance-based questions.
+    c_estimator      : "harrell", "uno" or "gonen-heller" for
+                       concordance-based questions.
     c_tau            : truncation horizon (months) for Uno's C; default is
                        the 90th percentile of observed follow-up.
     engine           : "fast" or "lifelines" for univariate Cox fits.
@@ -114,4 +115,5 @@ class StudyDesign:
                 f"(R^2 of the biomarker on them = {self.r2:g})")
 
     def estimator_label(self) -> str:
-        return "Harrell's C" if self.c_estimator == "harrell" else "Uno's C"
+        return {"harrell": "Harrell's C", "uno": "Uno's C",
+                "gonen-heller": "Gonen-Heller's C"}[self.c_estimator]

@@ -29,3 +29,20 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: pytest -q
+
+  # Smoke test: every tutorial must run. The published numbers come from the docs build.
+  tutorials:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TQDM_DISABLE: "1"
+      MPLBACKEND: Agg
+      SURVPOWER_TUTORIAL_SIMS: "50"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install -e .
+      - shell: bash
+        run: for f in docs/tutorials/*.py; do echo "== $f"; python "$f"; done

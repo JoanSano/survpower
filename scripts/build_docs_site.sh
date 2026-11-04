@@ -31,8 +31,11 @@ for branch in $(git -C "$REPO" ls-remote --heads origin | sed 's#.*refs/heads/##
   git -C "$REPO" worktree add --quiet --detach "$wt" "origin/$branch"
   strict=()
   [ "$branch" = main ] && strict=(--strict)
+  # tutorials run at full budget on main only, to keep the multi-branch build fast
+  sims=50
+  [ "$branch" = main ] && sims=1000
   echo "building docs for $branch -> $slug/"
-  if DOCS_SITE_URL="$BASE/$slug/" mkdocs build --quiet ${strict[@]+"${strict[@]}"} \
+  if SURVPOWER_TUTORIAL_SIMS=$sims TQDM_DISABLE=1 DOCS_SITE_URL="$BASE/$slug/" mkdocs build --quiet ${strict[@]+"${strict[@]}"} \
        -f "$wt/mkdocs.yml" -d "$OUT/$slug"; then
     built+=("$slug=$branch")
   elif [ "$branch" = main ]; then

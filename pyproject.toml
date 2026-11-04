@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "survpower"
-version = "0.2.1"
+version = "0.3.0"
 description = "Power and sample-size planning for continuous biomarkers under the Cox model, with hazard-ratio and concordance-index effect sizes."
 readme = "README.md"
 requires-python = ">=3.9"

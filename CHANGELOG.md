@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-11-04
+
+Milestone M1 (foundations): scenario engine (#9), `sample_size()` (#11) and
+executable tutorials (#12).
 
 ### Added
 - `survpower.scenario` (provisional): a `Scenario` composes a covariate model, an

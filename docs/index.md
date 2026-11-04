@@ -85,6 +85,9 @@ survpower --c-index 0.70 --precision 0.05             # N for a ±0.05 CI on C
 Next: [Quickstart recipes](quickstart.md) · [CLI reference](cli.md) ·
 [Python API](api.md).
 
+These pages document the `main` branch. To read the docs of a branch under
+development, use the selector next to the site title.
+
 ## Scope and assumptions
 
 * One continuous biomarker, approximately normal after any transform; effects

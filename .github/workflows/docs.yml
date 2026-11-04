@@ -1,31 +1,48 @@
-# Build the MkDocs site and publish it to GitHub Pages on every push to main.
+# Build the MkDocs site of every branch (scripts/build_docs_site.sh) and publish
+# it to GitHub Pages: main at /survpower/main/, each branch at /survpower/<branch>/,
+# with a branch selector in the header.
 # One-time setup: repository Settings -> Pages -> Source: "GitHub Actions".
+#
+# The github-pages environment only accepts deployments from main, so a push to
+# (or deletion of) any other branch just re-dispatches this workflow on main,
+# which rebuilds all branches.
 name: docs
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
+  delete:
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  build:
+  dispatch:
+    if: github.ref != 'refs/heads/main' || github.event_name == 'delete'
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - run: gh workflow run docs.yml --ref main --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  build:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'delete'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install -e ".[docs]"
-      - run: mkdocs build --strict
+      - run: scripts/build_docs_site.sh site
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
@@ -33,6 +50,12 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

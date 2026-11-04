@@ -1,13 +1,18 @@
 site_name: survpower
 site_description: Power and sample-size planning for continuous biomarkers under the Cox model
-site_url: https://joansano.github.io/survpower/
+# each branch build sets DOCS_SITE_URL to its own folder (scripts/build_docs_site.sh)
+site_url: !ENV [DOCS_SITE_URL, "https://joansano.github.io/survpower/"]
 repo_url: https://github.com/JoanSano/survpower
 repo_name: JoanSano/survpower
+
+# issue drafts and the roadmap are not published
+exclude_docs: |
+  dev/
 
 theme:
   name: material
   features:
-    - navigation.sections
+    - navigation.indexes
     - navigation.top
     - content.code.copy
     - search.highlight
@@ -26,6 +31,7 @@ nav:
   - Quickstart (grant & trial recipes): quickstart.md
   - Command-line reference: cli.md
   - Concepts:
+      - concepts/index.md
       - Effect sizes (HR and concordance): concepts/effect-sizes.md
       - Censoring, accrual and attrition: concepts/censoring-and-accrual.md
       - Adjustment covariates: concepts/adjustment.md
@@ -46,6 +52,12 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.tabbed: { alternate_style: true }
   - pymdownx.arithmatex: { generic: true }
+
+extra:
+  # branch selector in the header; reads ../versions.json written by
+  # scripts/build_docs_site.sh (mike's format; mike itself is not used)
+  version:
+    provider: mike
 
 extra_javascript:
   - javascripts/mathjax.js

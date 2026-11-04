@@ -60,6 +60,11 @@ from .planning import (
     run_sample_size_mode,
 )
 from .simulate import simulate_power, simulate_power_design
+from . import scenario
+# provisional (may change before 1.0); `simulate_scenario` because `survpower.simulate`
+# is the module of the legacy engines
+from .scenario import Scenario
+from .scenario import simulate as simulate_scenario
 
 __version__ = "0.2.1"
 

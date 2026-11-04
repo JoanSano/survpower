@@ -32,6 +32,19 @@ def calibrate_censoring(
     return (lo + hi) / 2
 
 
+def calibrate_censoring_for(
+    sampler,
+    target_censor_rate: float,
+    seed: int = 1,
+    n_probe: int = 500_000,
+) -> float:
+    """lambda_c for any event-time generator: draws a probe sample
+    ``T = sampler(n_probe, rng)`` from ``default_rng(seed)`` and bisects on it
+    with the same generator (`calibrate_censoring`)."""
+    rng = np.random.default_rng(seed)
+    return calibrate_censoring(np.asarray(sampler(n_probe, rng)), target_censor_rate, rng)
+
+
 def calibrate_censoring_rate(
     beta: float,
     target_censor_rate: float,
@@ -40,9 +53,8 @@ def calibrate_censoring_rate(
     seed: int = 1,
 ) -> float:
     """lambda_c for the exponential PH model with per-SD log-HR `beta`."""
-    rng = np.random.default_rng(seed)
-    T, _ = gen_exponential_ph(n_probe, beta, lambda0, rng)
-    return calibrate_censoring(T, target_censor_rate, rng)
+    return calibrate_censoring_for(lambda n, rng: gen_exponential_ph(n, beta, lambda0, rng)[0],
+                                   target_censor_rate, seed=seed, n_probe=n_probe)
 
 
 def calibrate_censoring_rate_heterogeneous(
@@ -53,18 +65,19 @@ def calibrate_censoring_rate_heterogeneous(
     """lambda_c for the full linear predictor beta*X + Z @ beta_z, with a fresh
     beta_z ~ N(0, sigma_z^2)^p per chunk so the calibration marginalizes over
     the distribution of adjustment-covariate effect sizes (Section 10)."""
-    rng = np.random.default_rng(seed)
-    chunk = max(n_probe // n_chunks, 1000)
-    T_parts = []
-    for _ in range(n_chunks):
-        X, Z = gen_adjustment_covariates(chunk, r2_target, p, rng)
-        if p == 0:
-            lin_pred = beta * X
-        else:
-            beta_z_vec = rng.normal(0.0, sigma_z, size=p)
-            lin_pred = beta * X + Z @ beta_z_vec
-        T_parts.append(rng.exponential(scale=1.0 / (lambda0 * np.exp(lin_pred))))
-    return calibrate_censoring(np.concatenate(T_parts), target_censor_rate, rng)
+    def sampler(n, rng):
+        chunk = max(n // n_chunks, 1000)
+        T_parts = []
+        for _ in range(n_chunks):
+            X, Z = gen_adjustment_covariates(chunk, r2_target, p, rng)
+            if p == 0:
+                lin_pred = beta * X
+            else:
+                beta_z_vec = rng.normal(0.0, sigma_z, size=p)
+                lin_pred = beta * X + Z @ beta_z_vec
+            T_parts.append(rng.exponential(scale=1.0 / (lambda0 * np.exp(lin_pred))))
+        return np.concatenate(T_parts)
+    return calibrate_censoring_for(sampler, target_censor_rate, seed=seed, n_probe=n_probe)
 
 
 def calibrate_censoring_waning(
@@ -72,9 +85,8 @@ def calibrate_censoring_waning(
     lambda0: float = DEFAULT_LAMBDA0, n_probe: int = 300_000, seed: int = 1,
 ) -> float:
     """lambda_c for the waning-effect generator (Appendix A.3)."""
-    rng = np.random.default_rng(seed)
-    T, _ = gen_waning(n_probe, beta0, tau, lambda0, rng)
-    return calibrate_censoring(T, target_censor_rate, rng)
+    return calibrate_censoring_for(lambda n, rng: gen_waning(n, beta0, tau, lambda0, rng)[0],
+                                   target_censor_rate, seed=seed, n_probe=n_probe)
 
 
 def calibrate_censoring_crossing(
@@ -82,9 +94,9 @@ def calibrate_censoring_crossing(
     lambda0: float = DEFAULT_LAMBDA0, n_probe: int = 300_000, seed: int = 1,
 ) -> float:
     """lambda_c for the crossing-hazards generator (Appendix A.4)."""
-    rng = np.random.default_rng(seed)
-    T, _ = gen_crossing(n_probe, beta_early, beta_late, tau, lambda0, rng)
-    return calibrate_censoring(T, target_censor_rate, rng)
+    return calibrate_censoring_for(
+        lambda n, rng: gen_crossing(n, beta_early, beta_late, tau, lambda0, rng)[0],
+        target_censor_rate, seed=seed, n_probe=n_probe)
 
 
 def censor_rate_from_design(

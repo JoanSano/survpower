@@ -10,6 +10,7 @@ re-exported from the top-level package (`from survpower import ...`).
 | `survpower.concordance` | C ↔ HR mapping, Harrell / Uno / Gönen–Heller estimators with SEs, concordance power |
 | `survpower.closed_form` | Schoenfeld / Hsieh–Lavori, Freedman and median-split formulas |
 | `survpower.calibration` | simulation-calibrated N and detectable HR, with bootstrap MC intervals |
+| `survpower.scenario` | composable simulation scenarios: covariate, event-time and censoring models plus analyses (provisional) |
 | `survpower.simulate` | Monte Carlo power engines (PH, dichotomized, adjusted, omitted covariates, non-PH) |
 | `survpower.results` | performance measures with Monte Carlo SEs (Morris et al. 2019) |
 | `survpower.censoring` | censoring calibration and the accrual calendar |
@@ -49,6 +50,36 @@ re-exported from the top-level package (`from survpower import ...`).
 ## Calibration
 
 ::: survpower.calibration
+
+## Scenarios (provisional)
+
+!!! warning "Provisional API"
+    `survpower.scenario` may change before 1.0. `Scenario` and
+    `simulate_scenario` (= `scenario.simulate`) are exported from `survpower`.
+
+A `Scenario` composes one model per step of the Monte Carlo loop: covariates →
+event times → censoring → analyses. Models are plain objects satisfying the
+protocols below, so a new data-generating option is a new class, not a new
+loop. `simulate_power` and `simulate_continuous_vs_dichotomized` run on it.
+
+```python
+import numpy as np
+from survpower.scenario import (Scenario, ExponentialPH, ExponentialCensoring,
+                                CoxWald, LogRank, simulate)
+
+sc = Scenario(event_times=ExponentialPH(log_hr=np.log(1.15)),
+              censoring=ExponentialCensoring(target_rate=0.20),
+              analyses=(CoxWald(), CoxWald(dichotomize=True), LogRank()))
+simulate(sc, n=500, n_sims=1000, seed=1)  # one row per analysis, with MCSEs
+```
+
+The same seed gives the same result within one installed version.
+
+::: survpower.scenario
+    options:
+      members: [Scenario, simulate, run_replicates, Replicates, Covariates,
+                CovariateModel, EventTimeModel, CensoringModel, Analysis,
+                StandardNormal, ExponentialPH, ExponentialCensoring, CoxWald, LogRank]
 
 ## Simulation engines
 

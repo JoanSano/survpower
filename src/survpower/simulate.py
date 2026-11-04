@@ -29,6 +29,16 @@ from .censoring import (
 from .dgp import gen_adjustment_covariates, gen_crossing, gen_waning
 from .fitting import ENGINES, cox_fit_1d, fit_cox, logrank_1d, rejects, wald_rejects
 from .results import exp_mean_mcse, mean_mcse, proportion_mcse, sd_mcse, summarize_replicates
+from .scenario import (
+    CoxWald,
+    ExponentialCensoring,
+    ExponentialPH,
+    LogRank,
+    Scenario,
+    StandardNormal,
+    design_frame,
+    run_replicates,
+)
 
 
 def _r4(x: float) -> float:
@@ -54,12 +64,13 @@ def _censor(T: np.ndarray, lam_c: float, rng: np.random.Generator):
     return np.minimum(T, C), (T <= C).astype(int)
 
 
-def _design_frame(time_, event, X, Z=None) -> pd.DataFrame:
-    cols = {"time": time_, "event": event, "X": X}
-    if Z is not None:
-        for j in range(Z.shape[1]):
-            cols[f"Z{j}"] = Z[:, j]
-    return pd.DataFrame(cols)
+_design_frame = design_frame
+
+
+def _ph_scenario(hr, censor_rate, lambda0, analyses) -> Scenario:
+    """Exponential PH with X ~ N(0, 1) and calibrated exponential censoring."""
+    return Scenario(StandardNormal(), ExponentialPH(log_hr=np.log(hr), lambda0=lambda0),
+                    ExponentialCensoring(target_rate=censor_rate), analyses)
 
 
 def simulate_power(
@@ -80,32 +91,16 @@ def simulate_power(
     `summarize_replicates` dict (power, bias, empirical / model SE, coverage,
     each with its MCSE) plus `lambda_c`.
     """
-    if engine not in ENGINES:
-        raise ValueError(f"engine must be one of {ENGINES}")
-    beta = np.log(hr)
-    lam_c = calibrate_censoring_rate(beta, censor_rate, lambda0=lambda0, seed=seed + 999)
-    rng = np.random.default_rng(seed)
-    rejections, events, reject, beta_hats, ses = 0, [], [], [], []
-    for _ in tqdm(range(n_sims), desc=f"continuous n={n} HR={hr:.3g}", leave=False):
-        X = rng.standard_normal(n)
-        T = rng.exponential(scale=1.0 / (lambda0 * np.exp(beta * X)))
-        time_, event = _censor(T, lam_c, rng)
-        events.append(event.sum())
-        if engine == "fast":
-            b, se = cox_fit_1d(time_, event, X)
-            r = wald_rejects(b / se, beta, alpha, sides)
-        else:
-            cph, _ = fit_cox(_design_frame(time_, event, X))
-            r = rejects(cph, beta, alpha, sides)
-            b, se = cph.summary.loc["X", "coef"], cph.summary.loc["X", "se(coef)"]
-        rejections += r
-        reject.append(r); beta_hats.append(b); ses.append(se)
+    reps = run_replicates(_ph_scenario(hr, censor_rate, lambda0, (CoxWald(engine=engine),)),
+                          n, n_sims=n_sims, seed=seed, alpha=alpha, sides=sides,
+                          desc=f"continuous n={n} HR={hr:.3g}")
+    lam_c = reps.scenario.censoring.rate
     if details:
-        out = summarize_replicates(reject, beta_hats, ses, beta_true=beta, events=events,
-                                   alpha=alpha)
+        out = reps.summary("cox_wald")
         out["lambda_c"] = lam_c
         return out
-    return rejections / n_sims, float(np.mean(events)), lam_c
+    rejections = int(reps.values["cox_wald"]["reject"].sum())
+    return rejections / n_sims, float(np.mean(reps.events)), lam_c
 
 
 def simulate_power_with_adjustment(
@@ -196,24 +191,16 @@ def simulate_continuous_vs_dichotomized(
     with the log-rank test (`power_dich_logrank`), whose power Schoenfeld's
     closed form predicts. Uses the fast engine (identical continuous decisions
     to `simulate_power` with the same seed)."""
-    beta = np.log(hr)
-    lam_c = calibrate_censoring_rate(beta, censor_rate, lambda0=lambda0, seed=seed + 999)
-    rng = np.random.default_rng(seed)
-    rej_cont = rej_dich = rej_lr = 0
-    events, bg, bc, se_gs, ev_high = [], [], [], [], []
-    for _ in tqdm(range(n_sims), desc=f"cont vs dich n={n}", leave=False):
-        X = rng.standard_normal(n)
-        T = rng.exponential(scale=1.0 / (lambda0 * np.exp(beta * X)))
-        time_, event = _censor(T, lam_c, rng)
-        events.append(event.sum())
-        b, se = cox_fit_1d(time_, event, X)
-        rej_cont += wald_rejects(b / se, beta, alpha, sides)
-        G = (X > np.median(X)).astype(float)
-        bg_hat, se_g = cox_fit_1d(time_, event, G)
-        rej_dich += wald_rejects(bg_hat / se_g, beta, alpha, sides)
-        rej_lr += wald_rejects(logrank_1d(time_, event, G), beta, alpha, sides)
-        bg.append(bg_hat); bc.append(b); se_gs.append(se_g)
-        ev_high.append(event[G == 1].sum())
+    cont, dich, lr = CoxWald(), CoxWald(dichotomize=True), LogRank(dichotomize=True)
+    reps = run_replicates(_ph_scenario(hr, censor_rate, lambda0, (cont, dich, lr)),
+                          n, n_sims=n_sims, seed=seed, alpha=alpha, sides=sides,
+                          desc=f"cont vs dich n={n}")
+    lam_c = reps.scenario.censoring.rate
+    events = reps.events
+    vc, vd = reps.values[cont.name], reps.values[dich.name]
+    rej_cont, rej_dich = int(vc["reject"].sum()), int(vd["reject"].sum())
+    rej_lr = int(reps.values[lr.name]["reject"].sum())
+    bc, bg, se_gs, ev_high = vc["beta_hat"], vd["beta_hat"], vd["se"], vd["events_high"]
     return dict(
         n=n, hr=hr, n_sims=n_sims, mean_events=round(float(np.mean(events)), 1),
         power_cont=round(rej_cont / n_sims, 3), power_dich=round(rej_dich / n_sims, 3),

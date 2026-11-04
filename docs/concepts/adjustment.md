@@ -70,4 +70,6 @@ The concordance modes are univariate. To show that a biomarker **adds** to a
 clinical model, do not power a ΔC comparison: tests of ΔC between nested models
 are poorly behaved (Pepe et al., 2013). Power the biomarker's **adjusted hazard
 ratio** (this page), and report ΔC with a confidence interval as a secondary
-result.
+result. Gönen–Heller's C handles the multivariable models directly:
+`concordance_index(time, event, X, method="gonen-heller")` with the covariate
+matrix `X` ([Concordance questions](concordance.md#gonenhellers-concordance-probability)).

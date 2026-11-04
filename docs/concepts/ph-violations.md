@@ -64,3 +64,5 @@ the pattern of non-proportionality (Lin et al., 2020).
 
 The concordance remains well defined under non-PH, but it depends on follow-up.
 Use Uno's C with a fixed horizon (`--c-estimator uno --c-tau ...`).
+Do not use Gönen–Heller's C here: it is computed from the fitted Cox model, so
+under non-PH it reports the concordance the misspecified model implies.

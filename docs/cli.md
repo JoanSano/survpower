@@ -35,7 +35,7 @@ survpower report [--appendix-b] [...]     reproduce the report (deprecated)
 |---|---|---|
 | `--c0 C0 [...]` | | benchmark concordance(s): one-sided test of H₀: C ≤ C₀ |
 | `--precision H [...]` | | target 95% CI half-width(s) for C |
-| `--c-estimator {harrell,uno}` | harrell | estimator used for benchmark / precision |
+| `--c-estimator {harrell,uno,gonen-heller}` | harrell | estimator used for benchmark / precision |
 | `--c-tau MONTHS` | 90th pct. of follow-up | truncation horizon for Uno's C |
 
 ## Survival, follow-up and attrition

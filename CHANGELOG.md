@@ -3,6 +3,15 @@
 ## Unreleased
 
 ### Added
+- Gönen & Heller's (2005) concordance probability estimate (#6):
+  `concordance.gonen_heller_c_with_se(X, beta, cov)` for a Cox model with any
+  number of covariates, with the paper's SE (smoothed U-statistic variance plus
+  the delta-method term for beta_hat). `concordance_index(time, event, X,
+  method="gonen-heller")` accepts a covariate vector or matrix and fits the Cox
+  model (`concordance.fit_cox_coefficients`). The benchmark and precision modes
+  accept `--c-estimator gonen-heller` (biomarker-only model). It converges to the
+  population C at any censoring and needs about 25% fewer patients than Harrell's
+  C to show C > C0, but assumes the model is correct.
 - Log-rank test for the median split (#34). `survpower.fitting.logrank_1d` is the Cox
   score test of beta = 0 (equal to lifelines' `logrank_test` without ties).
   `simulate_continuous_vs_dichotomized` reports `power_dich_logrank` with its MCSE on

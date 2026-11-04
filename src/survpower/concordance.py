@@ -31,12 +31,20 @@ Estimators:
   G = Kaplan-Meier survival of the censoring distribution, and truncates at
   a horizon tau. It converges to the censoring-free, tau-truncated
   concordance `uno_limit`, so it does not depend on the censoring pattern.
+* **Gonen-Heller's CPE** (Gonen & Heller, 2005) is model-based: it uses only
+  the covariates and the fitted Cox coefficients, not the observed times, so
+  it is unaffected by censoring (given a consistent beta_hat). Each pair
+  contributes expit(|eta_i - eta_j|), eta = X beta_hat, which works for any
+  number of covariates (the concordance of the whole linear predictor). It
+  converges to K(beta) of eq. 25 (`c_of_beta`) in the univariate model.
 
 Standard errors use the Hajek projection of the (weighted) ratio of
 U-statistics with the delta method (eq. 28); for Uno's C the IPCW weights
 are treated as known, which slightly understates the SE (checked by
-simulation in the test-suite). Both estimators build n x n pair matrices:
-practical up to a few thousand subjects.
+simulation in the test-suite). The Gonen-Heller SE adds the uncertainty of
+beta_hat to the U-statistic variance by the delta method, on the smoothed
+estimator of the paper. All estimators build n x n pair matrices: practical
+up to a few thousand subjects.
 """
 
 from __future__ import annotations
@@ -46,7 +54,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 from scipy import integrate, optimize, stats
-from scipy.special import expit
+from scipy.special import expit, ndtr
 
 from ._utils import tqdm
 from .baseline import DEFAULT_LAMBDA0
@@ -57,7 +65,7 @@ from .results import mean_mcse, proportion_mcse, sd_mcse
 if TYPE_CHECKING:  # design.py imports this module
     from .design import StudyDesign
 
-ESTIMATORS = ("harrell", "uno")
+ESTIMATORS = ("harrell", "uno", "gonen-heller")
 RULE_OF_THUMB_KAPPA = 1.64  # fitted to the exact inverse of eq. 25 (Appendix B.1)
 
 
@@ -139,6 +147,8 @@ def concordance_limit(beta: float, lam_c: float, method: str = "harrell",
     if method == "uno":
         tau = default_uno_tau(beta, lam_c, lambda0) if tau is None else tau
         return uno_limit(beta, tau, lambda0=lambda0)
+    if method == "gonen-heller":
+        return c_of_beta(beta)
     raise ValueError(f"method must be one of {ESTIMATORS}")
 
 
@@ -227,10 +237,97 @@ def uno_c_with_se(time: np.ndarray, event: np.ndarray, eta: np.ndarray,
     return _weighted_c_with_se(comp, conc)
 
 
+def _as_matrix(x) -> np.ndarray:
+    x = np.asarray(x, dtype=float)
+    return x[:, None] if x.ndim == 1 else x
+
+
+def gonen_heller_c_with_se(X, beta, cov=None, bandwidth: float | None = None
+                           ) -> tuple[float, float]:
+    """Gonen & Heller's (2005) concordance probability estimate (CPE) of a Cox
+    model with covariate matrix X (n x p, or a 1-D vector) and coefficients
+    beta (length p), with its asymptotic SE.
+
+    CPE = (n choose 2)^-1 sum_{i<j} expit(|eta_i - eta_j|), eta = X beta: the
+    model-implied probability that the member of a pair with the higher risk
+    fails first. It uses no survival times, so censoring does not bias it.
+
+    The SE follows the paper: the U-statistic (Hajek projection) variance of
+    the smoothed CPE, where the indicator I(eta_i > eta_j) is replaced by
+    Phi((eta_i - eta_j) / h) with h = 0.5 sd(eta) n^(-1/3), plus the
+    delta-method term g' cov g for the uncertainty of beta_hat (g = gradient
+    of the smoothed CPE in beta). Without `cov`, beta is treated as known.
+    """
+    X = _as_matrix(X)
+    beta = np.atleast_1d(np.asarray(beta, dtype=float))
+    if X.shape[1] != beta.size:
+        raise ValueError(f"X has {X.shape[1]} column(s) but beta has {beta.size}")
+    n = X.shape[0]
+    if n < 3 or not np.all(np.isfinite(beta)):
+        return float("nan"), float("nan")
+    eta = X @ beta
+    D = eta[None, :] - eta[:, None]          # D[i, j] = eta_j - eta_i
+    npairs = n * (n - 1)                     # ordered pairs (each unordered pair twice)
+    E = expit(np.abs(D))
+    np.fill_diagonal(E, 0.0)
+    c = float(E.sum() / npairs)
+
+    if bandwidth is None:
+        bandwidth = 0.5 * float(np.std(eta, ddof=1)) * n ** (-1 / 3)
+    if not bandwidth > 0:                    # all eta equal (e.g. beta = 0)
+        return c, float("nan")
+    u = D / bandwidth
+    # smoothed kernel f(d) = Phi(-d/h) expit(-d) + Phi(d/h) expit(d), symmetric in d
+    pp, ep = ndtr(u), expit(D)
+    pm, em = 1.0 - pp, 1.0 - ep
+    F = pm * em + pp * ep
+    np.fill_diagonal(F, 0.0)
+    c_s = F.sum() / npairs
+    # U-statistic variance 4/n Var(h1), h1(i) = mean_j f(eta_j - eta_i)
+    h1 = F.sum(1) / (n - 1)
+    var = 4.0 / n * np.sum((h1 - c_s) ** 2) / (n - 1)
+    if cov is not None:
+        cov = np.atleast_2d(np.asarray(cov, dtype=float))
+        # f'(d), antisymmetric in (i, j)
+        G = np.exp(-0.5 * u * u) / (np.sqrt(2 * np.pi) * bandwidth) * (ep - em) + (pp - pm) * ep * em
+        np.fill_diagonal(G, 0.0)
+        # dCPE/dbeta = sum_{i != j} G_ij (x_j - x_i) / npairs = -2 sum_i (sum_j G_ij) x_i / npairs
+        grad = -2.0 * (G.sum(1) @ X) / npairs
+        var += float(grad @ cov @ grad)
+    return c, float(np.sqrt(var))
+
+
+def fit_cox_coefficients(time, event, X) -> tuple[np.ndarray, np.ndarray]:
+    """Cox coefficients and their covariance matrix for covariates X (n x p,
+    or 1-D): the fast solver for one covariate, lifelines otherwise."""
+    X = _as_matrix(X)
+    if X.shape[1] == 1:
+        b, se = cox_fit_1d(time, event, X[:, 0])
+        return np.array([b]), np.array([[se ** 2]])
+    from lifelines import CoxPHFitter
+    cols = [f"x{k}" for k in range(X.shape[1])]
+    df = pd.DataFrame(X, columns=cols).assign(time=np.asarray(time),
+                                              event=np.asarray(event).astype(int))
+    cph = CoxPHFitter().fit(df, duration_col="time", event_col="event")
+    return cph.params_[cols].to_numpy(), cph.variance_matrix_.loc[cols, cols].to_numpy()
+
+
 def concordance_index(time, event, eta, method: str = "harrell",
-                      tau: float | None = None) -> tuple[float, float]:
-    """Concordance index and its asymptotic SE. `eta` is a risk score
-    (higher = shorter survival), e.g. the biomarker or a Cox linear predictor."""
+                      tau: float | None = None, beta=None, cov=None) -> tuple[float, float]:
+    """Concordance index and its asymptotic SE.
+
+    For Harrell's and Uno's C, `eta` is a risk score (higher = shorter
+    survival), e.g. the biomarker or a Cox linear predictor.
+
+    For ``method="gonen-heller"``, `eta` holds the model's covariates: a
+    vector (one covariate) or an n x p matrix (multivariable model). The Cox
+    model of (time, event) on them is fitted unless `beta` (and optionally
+    its covariance `cov`) is given; the SE includes the uncertainty of
+    beta_hat whenever a covariance is available."""
+    if method == "gonen-heller":
+        if beta is None:
+            beta, cov = fit_cox_coefficients(time, event, eta)
+        return gonen_heller_c_with_se(eta, beta, cov)
     if method == "harrell":
         return harrell_c_with_se(time, event, eta)
     if method == "uno":
@@ -264,6 +361,8 @@ def simulate_cindex_power(
     each Monte Carlo estimate with a `*_mcse` column. Cohorts with fewer than
     two events are skipped (counted in `n_failed`, not rejected).
     The biomarker is oriented by the sign of beta (risk score = sign(beta) X).
+    The Gonen-Heller C comes from the fitted Cox model and is >= 0.5 by
+    construction (it orients itself by the sign of beta_hat).
     """
     if method == "uno" and tau is None:
         tau = default_uno_tau(beta, lam_c, lambda0)
@@ -281,7 +380,10 @@ def simulate_cindex_power(
         if d.sum() < 2:
             continue
         b, se_b = cox_fit_1d(t, d, X)
-        c, se_c = concordance_index(t, d, s * X, method=method, tau=tau)
+        if method == "gonen-heller":
+            c, se_c = gonen_heller_c_with_se(X, b, se_b ** 2)
+        else:
+            c, se_c = concordance_index(t, d, s * X, method=method, tau=tau)
         rej_cox += wald_rejects(b / se_b, beta, alpha, sides)
         if np.isfinite(se_c) and se_c > 0:
             rej_c05 += wald_rejects((c - 0.5) / se_c, 1.0, alpha, sides)
@@ -311,12 +413,16 @@ def simulate_cindex_power(
 
 
 def sigma_c(beta: float, lam_c: float, method: str = "harrell", tau: float | None = None,
-            lambda0: float = DEFAULT_LAMBDA0, n: int = 2000, n_sims: int = 40,
+            lambda0: float = DEFAULT_LAMBDA0, n: int = 2000, n_sims: int | None = None,
             seed: int = 99) -> float:
     """Asymptotic SD of sqrt(N) * C_hat, sigma_C = lim sqrt(N Var(C_hat)),
     estimated from the analytic SE in `n_sims` large cohorts of size n
     (Appendix B.4 used the empirical SD at N = 3000; the analytic SE is far
-    less noisy and agrees within a few percent at this size)."""
+    less noisy and agrees within a few percent at this size). `n_sims`
+    defaults to 40, or 10 for Gonen-Heller's C, whose SE varies little
+    between cohorts (~1.5% per draw) but costs ~10x more per cohort."""
+    if n_sims is None:
+        n_sims = 10 if method == "gonen-heller" else 40
     out = _se_draws(n, beta, lam_c, method, tau, lambda0, n_sims, seed)
     return float(np.sqrt(n) * np.sqrt(np.mean(out ** 2)))
 
@@ -331,7 +437,11 @@ def _se_draws(n, beta, lam_c, method, tau, lambda0, n_sims, seed):
         X = rng.standard_normal(n)
         T = rng.exponential(scale=1.0 / (lambda0 * np.exp(beta * X)))
         C = rng.exponential(scale=1.0 / lam_c, size=n)
-        ses.append(concordance_index(np.minimum(T, C), T <= C, s * X, method=method, tau=tau)[1])
+        if method == "gonen-heller":
+            ses.append(concordance_index(np.minimum(T, C), T <= C, X, method=method)[1])
+        else:
+            ses.append(concordance_index(np.minimum(T, C), T <= C, s * X, method=method,
+                                         tau=tau)[1])
     return np.asarray(ses)
 
 

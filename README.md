@@ -102,7 +102,7 @@ calibration works.
 src/survpower/
   design.py        StudyDesign: the shared design assumptions
   planning.py      the solve-for-X modes behind the CLI
-  concordance.py   C <-> HR, Harrell / Uno estimators with SEs, concordance power
+  concordance.py   C <-> HR, Harrell / Uno / Gonen-Heller estimators with SEs, concordance power
   closed_form.py   Schoenfeld / Hsieh-Lavori, Freedman and median-split formulas
   calibration.py   simulation-calibrated N / HR with bootstrap MC intervals (+ small-N scan)
   simulate.py      Monte Carlo engines (PH, dichotomized, adjusted, omitted covariates, non-PH)

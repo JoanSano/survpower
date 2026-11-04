@@ -35,14 +35,15 @@ simulation of the actual test.
 
 The margin \(C - C_0\) drives everything: halving it roughly quadruples N.
 
-## Harrell's or Uno's C?
+## Harrell's, Uno's or Gönen–Heller's C?
 
-| | Harrell's C (`--c-estimator harrell`) | Uno's C (`--c-estimator uno`) |
-|---|---|---|
-| Comparable pairs | shorter observed time is an event | same, re-weighted by \(1/\hat G(T_i)^2\) and truncated at τ |
-| Converges to | \(C_H\), which depends on the censoring pattern and exceeds the population C | \(K_\tau\), the censoring-free concordance up to τ |
-| Example, C = 0.70, 20% censoring | 0.7032 | 0.7009 (τ = 52 months) |
-| Best when | light censoring, comparison with published Harrell values | heavier or covariate-related censoring, a fixed clinical horizon |
+| | Harrell's C (`--c-estimator harrell`) | Uno's C (`--c-estimator uno`) | Gönen–Heller's C (`--c-estimator gonen-heller`) |
+|---|---|---|---|
+| Comparable pairs | shorter observed time is an event | same, re-weighted by \(1/\hat G(T_i)^2\) and truncated at τ | every pair, scored by the fitted Cox model |
+| Converges to | \(C_H\), which depends on the censoring pattern and exceeds the population C | \(K_\tau\), the censoring-free concordance up to τ | \(K(\beta)\), the population concordance (eq. 25), at any censoring |
+| Example, C = 0.70, 20% censoring | 0.7032 | 0.7009 (τ = 52 months) | 0.7000 |
+| N to show C > 0.65 (80% power) | ≈ 230 | | ≈ 170 |
+| Best when | light censoring, comparison with published Harrell values | heavier or covariate-related censoring, a fixed clinical horizon | PH holds, heavy censoring, or the C of a multivariable model |
 
 \(\hat G\) is the Kaplan–Meier estimate of the censoring distribution. With
 Uno's C the horizon τ matters. By default it is the 90th percentile of observed
@@ -65,6 +66,34 @@ clinically meaningful horizon (e.g. 24 months) and report it.
     either direction. Simulate the paired test under a joint model for both
     predictors instead. `survpower` does not implement this yet.
 
+## Gönen–Heller's concordance probability
+
+Gönen & Heller (2005) estimate the concordance from the Cox model itself.
+With linear predictor \(\eta_i = x_i^\top\hat\beta\), the model gives
+\(P(T_i < T_j \mid \eta_i > \eta_j) = \operatorname{expit}(\eta_i - \eta_j)\), so
+
+\[
+\widehat{\text{CPE}} = \binom{n}{2}^{-1} \sum_{i<j} \operatorname{expit}\big(|\eta_i - \eta_j|\big).
+\]
+
+No survival times enter, so the estimate does not depend on censoring once
+\(\hat\beta\) is consistent. It is also **multivariable**: \(x_i\) can hold the
+biomarker and any clinical covariates, giving the concordance of the whole
+model. Because it uses all pairs, not only the comparable ones, it is less
+variable than Harrell's C (\(\sigma_C\) ≈ 0.26 vs. 0.31 at C = 0.70 and 20%
+censoring), and the benchmark N is about 25% smaller.
+
+The price is that it is only as good as the model. Under non-PH, or with a
+misspecified functional form, it reports the concordance the model implies,
+not the one in the data. Check PH first, and report Harrell's or Uno's C
+alongside it.
+
+!!! note "Planning modes stay univariate"
+    `--c-estimator gonen-heller` in the benchmark and precision modes refers to
+    the biomarker-only Cox model. For the C of a multivariable model, compute it
+    on your data (below). To power what a biomarker **adds**, use its adjusted
+    HR ([Adjustment covariates](adjustment.md#concordance-and-added-value)).
+
 ## Standard errors
 
 Both estimators use the Hájek projection of the (weighted) ratio of
@@ -72,8 +101,16 @@ U-statistics (Hoeffding, 1948; see also Pencina & D'Agostino, 2004), giving a de
 \(\widehat{\text{Var}}(\hat C) = B^{-2} \sum_i (a_i - \hat C\, b_i)^2\). Here
 \(a_i\) and \(b_i\) are the concordant and comparable pair weights involving
 subject \(i\), and \(B\) is the total comparable weight. For Uno's C the IPCW
-weights are treated as known. The test suite checks both SEs against the
-simulated SD of \(\hat C\).
+weights are treated as known.
+
+The Gönen–Heller SE follows the paper. It adds two parts. One is the
+U-statistic variance of a smoothed CPE, where the indicator
+\(I(\eta_i > \eta_j)\) is replaced by \(\Phi\{(\eta_i - \eta_j)/h\}\) with
+\(h = 0.5\,\text{sd}(\eta)\,n^{-1/3}\). The other is the delta-method term
+\(g^\top \widehat{\text{Var}}(\hat\beta)\,g\) for the uncertainty in
+\(\hat\beta\), where \(g\) is the gradient of the smoothed CPE.
+
+The test suite checks all three SEs against the simulated SD of \(\hat C\).
 
 !!! danger "Small samples"
     Below ~60 patients the U-statistic SE is anti-conservative (type I error up
@@ -89,5 +126,17 @@ c, se = concordance_index(time, event, risk_score, method="uno", tau=24)
 ```
 
 `risk_score` is oriented so that higher means shorter survival (e.g. the
-biomarker itself, or a Cox linear predictor). Pair matrices are \(n \times n\):
-fine up to a few thousand patients.
+biomarker itself, or a Cox linear predictor).
+
+For Gönen–Heller's C, pass the **covariates** instead: a vector, or an
+\(n \times p\) matrix for a multivariable model. The Cox model is fitted for
+you, or you can supply its coefficients and their covariance:
+
+```python
+from survpower import concordance_index, gonen_heller_c_with_se
+X = df[["biomarker", "age", "kps"]].to_numpy()
+c, se = concordance_index(time, event, X, method="gonen-heller")
+c, se = gonen_heller_c_with_se(X, cph.params_, cph.variance_matrix_)  # existing fit
+```
+
+Pair matrices are \(n \times n\): fine up to a few thousand patients.

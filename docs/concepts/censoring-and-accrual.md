@@ -81,7 +81,8 @@ censoring as described above.
     matching the fraction is expected to be enough for the Wald test. But the
     timing changes which patients have events, and it affects Harrell's C
     (whose limit depends on the censoring distribution) and Uno's C with a
-    fixed horizon more. That this is second order has not yet been checked;
+    fixed horizon more. Gönen–Heller's C uses no times, only the fitted
+    coefficient, so it is affected only through the Cox fit. That this is second order has not yet been checked;
     simulating the calendar censoring itself is planned in
     [#16](https://github.com/JoanSano/survpower/issues/16).
 

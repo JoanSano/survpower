@@ -7,7 +7,7 @@ re-exported from the top-level package (`from survpower import ...`).
 |---|---|
 | `survpower.design` | `StudyDesign`, the shared design assumptions |
 | `survpower.planning` | the solve-for-X planning modes behind the CLI |
-| `survpower.concordance` | C ↔ HR mapping, Harrell / Uno estimators with SEs, concordance power |
+| `survpower.concordance` | C ↔ HR mapping, Harrell / Uno / Gönen–Heller estimators with SEs, concordance power |
 | `survpower.closed_form` | Schoenfeld / Hsieh–Lavori, Freedman and median-split formulas |
 | `survpower.calibration` | simulation-calibrated N and detectable HR, with bootstrap MC intervals |
 | `survpower.simulate` | Monte Carlo power engines (PH, dichotomized, adjusted, omitted covariates, non-PH) |
@@ -37,6 +37,7 @@ re-exported from the top-level package (`from survpower import ...`).
     options:
       members: [c_of_beta, beta_of_c, hr_of_c, beta_of_c_approx, harrell_limit, uno_limit,
                 default_uno_tau, concordance_limit, mapping_table, harrell_c_with_se, uno_c_with_se,
+                gonen_heller_c_with_se, fit_cox_coefficients,
                 concordance_index, censoring_survival_left, simulate_cindex_power, sigma_c,
                 benchmark_power, benchmark_sample_size, precision_half_width,
                 precision_sample_size]

@@ -10,3 +10,4 @@ site/
 survpower_output/
 survpower_report/
 *_out/
+.cache/

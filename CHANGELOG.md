@@ -8,8 +8,12 @@
   Crowther 2019). Every `simulate_*` dict, `simulate_cindex_power` and every
   `sensitivity.run_*` table now carries `n_sims`, `n_failed` and a `*_mcse` column per
   estimate, adding bias, empirical SE and coverage where a true log-HR exists. The
-  planning tables add `power_sim_mcse` and `half_width_simulated_mcse`. The CLI CSVs
-  gain the same columns.
+  planning tables add `power_sim_mcse`, `confirmed_power_mcse` and
+  `half_width_simulated_mcse`. The CLI CSVs gain the same columns.
+- Detectable-effect mode reports a 95% Monte Carlo interval for the protective HR
+  (`hr_protective_ci_low` / `hr_protective_ci_high`, the reciprocal of the harmful
+  interval), and per-unit intervals with `--biomarker-sd`. The summary quotes both
+  intervals.
 - `simulate_power(..., details=True)` and `simulate_power_design(..., details=True)`
   return the full dict. The default tuple return is unchanged.
 

@@ -151,6 +151,8 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
                 n_enrolled=n_enrol,
                 expected_events=out["confirmed_mean_events"],
                 confirmed_power=out["confirmed_power"],
+                confirmed_power_mcse=round(proportion_mcse(out["confirmed_power"], design.n_sims), 4),
+                n_sims=design.n_sims,
                 calibration=out["method"],
                 n_dichotomized_enrolled=n_dich,
                 summary=(
@@ -195,27 +197,44 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
                 engine=design.engine,
             )
             hr_sd = out["hr_calibrated"]
+            lo, hi = out["hr_ci_low"], out["hr_ci_high"]
+            has_ci = np.isfinite(lo)
             row = dict(
                 n_enrolled=n, n_evaluable=n_eval, target_power=pw, censor_rate=round(cr, 3),
                 hr_closed_form_per_sd=out["hr_closed_form"],
                 hr_detectable_per_sd=hr_sd,
-                hr_ci_low=out["hr_ci_low"], hr_ci_high=out["hr_ci_high"],
+                hr_ci_low=lo, hr_ci_high=hi,
+                # by symmetry of X, the protective HR is 1/HR: its interval is the reciprocal one
                 hr_detectable_protective_per_sd=round(1 / hr_sd, 4),
+                hr_protective_ci_low=round(1 / hi, 4), hr_protective_ci_high=round(1 / lo, 4),
                 c_detectable=round(c_of_beta(np.log(hr_sd)), 4),
             )
             if design.biomarker_sd is not None:
-                row["hr_detectable_per_unit"] = round(design.to_per_unit(hr_sd), 4)
-                row["hr_detectable_protective_per_unit"] = round(1 / design.to_per_unit(hr_sd), 4)
+                u = design.to_per_unit
+                row.update(
+                    hr_detectable_per_unit=round(u(hr_sd), 4),
+                    hr_per_unit_ci_low=round(u(lo), 4), hr_per_unit_ci_high=round(u(hi), 4),
+                    hr_detectable_protective_per_unit=round(1 / u(hr_sd), 4),
+                    hr_protective_per_unit_ci_low=round(1 / u(hi), 4),
+                    hr_protective_per_unit_ci_high=round(1 / u(lo), 4),
+                )
+            ci_txt = ""
+            if has_ci:
+                u = design.to_per_unit
+                ci_txt = (f" (95% Monte Carlo intervals {u(lo):.3f}-{u(hi):.3f} and "
+                          f"{1 / u(hi):.3f}-{1 / u(lo):.3f})")
             row.update(
                 expected_events=out["confirmed_mean_events"],
                 confirmed_power=out["confirmed_power"],
+                confirmed_power_mcse=round(proportion_mcse(out["confirmed_power"], design.n_sims), 4),
+                n_sims=design.n_sims,
                 summary=(
                     f"With N = {n} patients enrolled ({n_eval} evaluable; "
                     f"~{out['confirmed_mean_events']:.0f} expected events), a "
                     f"{design.test_label()}{design.adjustment_label()} has {pw:.0%} power to "
-                    f"detect a hazard ratio of {design.hr_label(hr_sd)} or larger (or, for a "
-                    f"protective effect, {design.to_per_unit(1 / hr_sd):.3g} or smaller); "
-                    f"simulation-confirmed power {out['confirmed_power']:.0%}."
+                    f"detect a hazard ratio of {design.hr_label(hr_sd)} or larger, or "
+                    f"{design.to_per_unit(1 / hr_sd):.3g} or smaller for a protective effect"
+                    f"{ci_txt}; simulation-confirmed power {out['confirmed_power']:.0%}."
                 ),
             )
             rows.append(row)
@@ -309,7 +328,10 @@ def run_cindex_benchmark_mode(design: StudyDesign, cs: list, c0s: list,
                         base, target_power=target, n_closed_form_evaluable=n0,
                         n_calibrated_evaluable=n_eval, n_enrolled=n_enrol,
                         expected_events=out["confirmed_mean_events"],
-                        confirmed_power=out["confirmed_power"], calibration=out["method"],
+                        confirmed_power=out["confirmed_power"],
+                        confirmed_power_mcse=round(
+                            proportion_mcse(out["confirmed_power"], design.n_sims), 4),
+                        n_sims=design.n_sims, calibration=out["method"],
                         summary=(f"For {target:.0%} power in {question}, N = {n_eval} evaluable / "
                                  f"{n_enrol} enrolled patients are required (~"
                                  f"{out['confirmed_mean_events']:.0f} events; simulation-confirmed "

@@ -76,3 +76,23 @@ def test_sensitivity_outputs(tmp_path):
 def test_invalid_inputs_exit(args):
     with pytest.raises(SystemExit):
         main(args)
+
+
+def test_planning_tables_report_mcse(tmp_path):
+    ss = pd.read_csv(run(tmp_path / "ss", "--hr", "1.3") / "sample_size.csv")
+    de = pd.read_csv(run(tmp_path / "de", "--n", "300") / "detectable_effect.csv")
+    for df in (ss, de):
+        assert {"confirmed_power_mcse", "n_sims"} <= set(df.columns)
+        assert (df["n_sims"] == 60).all()
+
+
+def test_protective_interval_is_reciprocal(tmp_path):
+    out = run(tmp_path, "--n", "300", "--biomarker-sd", "2")
+    row = pd.read_csv(out / "detectable_effect.csv").iloc[0]
+    assert row["hr_protective_ci_low"] == pytest.approx(1 / row["hr_ci_high"], abs=1e-4)
+    assert row["hr_protective_ci_high"] == pytest.approx(1 / row["hr_ci_low"], abs=1e-4)
+    assert (row["hr_protective_ci_low"] <= row["hr_detectable_protective_per_sd"]
+            <= row["hr_protective_ci_high"])
+    assert (row["hr_protective_per_unit_ci_low"] <= row["hr_detectable_protective_per_unit"]
+            <= row["hr_protective_per_unit_ci_high"])
+    assert "Monte Carlo intervals" in row["summary"]

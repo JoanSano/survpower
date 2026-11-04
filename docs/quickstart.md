@@ -38,8 +38,8 @@ prediction and the dichotomized power.
 survpower --n 250
 ```
 
-The minimum detectable hazard ratio per SD (and its protective reciprocal),
-expressed as a concordance index too. With 15-month median OS and 20%
+The minimum detectable hazard ratio per SD and its protective reciprocal, each
+with a 95% Monte Carlo interval, expressed as a concordance index too. With 15-month median OS and 20%
 censoring, N = 250 (~200 events) detects HR ≈ 1.23 per SD (C ≈ 0.56) with 80%
 power.
 

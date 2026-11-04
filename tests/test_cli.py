@@ -96,3 +96,9 @@ def test_protective_interval_is_reciprocal(tmp_path):
     assert (row["hr_protective_per_unit_ci_low"] <= row["hr_detectable_protective_per_unit"]
             <= row["hr_protective_per_unit_ci_high"])
     assert "Monte Carlo intervals" in row["summary"]
+
+
+def test_report_subcommand_deprecated(tmp_path, capsys):
+    main(["report", "--appendix-b", "--n-sims", "20", "--outdir", str(tmp_path)])
+    assert "deprecated" in capsys.readouterr().err
+    assert (tmp_path / "table8_concordance_mapping.csv").exists()

@@ -2,7 +2,7 @@
 
 ```text
 survpower [options]                       plan a study
-survpower report [--appendix-b] [...]     reproduce the report's tables and figures
+survpower report [--appendix-b] [...]     reproduce the report (deprecated)
 ```
 
 ## What gets solved for
@@ -84,6 +84,11 @@ Run at the given or solved (N, HR) for hazard-ratio questions.
 | `--no-plots` | | skip PDF figures |
 
 ## `survpower report`
+
+!!! warning "Deprecated"
+    Removed in 0.4.0. It prints a notice on stderr when run. For exact
+    reproduction, install the `v0.2.0` tag; see
+    [Reproducing the report](reproducing-the-report.md).
 
 | Option | Default | Meaning |
 |---|---|---|

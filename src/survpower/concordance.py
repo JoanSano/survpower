@@ -41,14 +41,21 @@ practical up to a few thousand subjects.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
+import pandas as pd
 from scipy import integrate, optimize, stats
 from scipy.special import expit
 
 from ._utils import tqdm
 from .baseline import DEFAULT_LAMBDA0
+from .censoring import calibrate_censoring_rate
 from .fitting import cox_fit_1d, wald_rejects
 from .results import mean_mcse, proportion_mcse, sd_mcse
+
+if TYPE_CHECKING:  # design.py imports this module
+    from .design import StudyDesign
 
 ESTIMATORS = ("harrell", "uno")
 RULE_OF_THUMB_KAPPA = 1.64  # fitted to the exact inverse of eq. 25 (Appendix B.1)
@@ -133,6 +140,37 @@ def concordance_limit(beta: float, lam_c: float, method: str = "harrell",
         tau = default_uno_tau(beta, lam_c, lambda0) if tau is None else tau
         return uno_limit(beta, tau, lambda0=lambda0)
     raise ValueError(f"method must be one of {ESTIMATORS}")
+
+
+# --- C <-> HR table (Table 8) ---------------------------------------------------
+
+def mapping_table(levels=(0.55, 0.60, 0.65, 0.70, 0.75), censor_rate: float = 0.20,
+                  design: StudyDesign | None = None, alpha: float = 0.05,
+                  power: float = 0.80) -> pd.DataFrame:
+    """C <-> per-SD HR table (Table 8): for each target concordance, the exact
+    beta and HR, the censoring rate lam_c calibrated to `censor_rate`, the
+    large-sample limit of Harrell's C under that censoring, and the
+    closed-form events D and enrolled N for `power` to detect beta != 0 with
+    the two-sided Wald test (eq. 16).
+
+    With a `design`, its baseline hazard and censoring (fixed rate or
+    accrual / follow-up / dropout) replace `censor_rate`. Values are unrounded."""
+    lambda0 = DEFAULT_LAMBDA0 if design is None else design.lambda0
+    z = stats.norm.ppf(1 - alpha / 2) + stats.norm.ppf(power)
+    rows = []
+    for c in levels:
+        b = beta_of_c(c)
+        hr = float(np.exp(b))
+        if design is None:
+            rate = censor_rate
+            lam_c = calibrate_censoring_rate(b, rate, lambda0=lambda0)
+        else:
+            rate, lam_c = design.censor_rate_for(hr), design.lambda_c_for(hr)
+        d = z ** 2 / b ** 2
+        rows.append(dict(C=float(c), beta=b, hr=hr, lam_c=lam_c,
+                         harrell_limit=harrell_limit(b, lam_c, lambda0),
+                         D80=d, N80_closed_form=int(np.ceil(d / (1 - rate)))))
+    return pd.DataFrame(rows)
 
 
 # --- Estimators with standard errors ------------------------------------------

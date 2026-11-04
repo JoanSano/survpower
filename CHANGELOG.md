@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `survpower.scenario` (provisional): a `Scenario` composes a covariate model, an
+  event-time model, a censoring model and a tuple of analyses; `simulate(scenario,
+  n, ...)` returns one row per analysis with the MCSE columns of
+  `results.summarize_replicates`. Shipped models: `StandardNormal`, `ExponentialPH`,
+  `ExponentialCensoring`, `CoxWald` (fast or lifelines, optionally on the median
+  split) and `LogRank`. A model is any object with the protocol's methods, so new
+  data-generating options need no new simulation loop. Exported as
+  `survpower.Scenario` and `survpower.simulate_scenario` (#9).
+- `censoring.calibrate_censoring_for(sampler, target, seed)`: censoring
+  calibration for any event-time generator. The four existing calibrators delegate
+  to it (results unchanged) (#9).
+
+### Changed
+- `simulate_power` and `simulate_continuous_vs_dichotomized` run on the scenario
+  engine. Their signatures and results are unchanged (bit for bit, checked against
+  0.2.1). The guarantee is now "the same seed gives the same result within one
+  installed version"; later releases may change the draw order (#9).
+
+### Removed
+- `tests/test_regression.py`, the exact regression against the original report
+  script. Install the `v0.2.0` tag to reproduce the report (#9).
+
 ## 0.2.1 — 2026-11-04
 
 Milestone M0 (quick wins and Monte Carlo standard errors): #1, #2, #4, #6, #8.

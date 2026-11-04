@@ -105,12 +105,13 @@ src/survpower/
   concordance.py   C <-> HR, Harrell / Uno / Gonen-Heller estimators with SEs, concordance power
   closed_form.py   Schoenfeld / Hsieh-Lavori, Freedman and median-split formulas
   calibration.py   simulation-calibrated N / HR with bootstrap MC intervals (+ small-N scan)
+  scenario.py      composable scenarios: covariate, event-time, censoring models + analyses
   simulate.py      Monte Carlo engines (PH, dichotomized, adjusted, omitted covariates, non-PH)
   censoring.py     censoring calibration and the accrual calendar
   sensitivity.py   collinearity / EPV / heterogeneous / omitted / waning / crossing studies
   fitting.py       fast univariate Cox solver, Wald decisions
   dgp.py, baseline.py, plotting.py, report.py, cli.py
-tests/             pytest suite, incl. exact regression vs. the original script
+tests/             pytest suite
 docs/              MkDocs sources
 ```
 

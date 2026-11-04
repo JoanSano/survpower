@@ -47,8 +47,9 @@ or `python scripts/reproduce_report.py` / `python scripts/reproduce_appendix_b.p
 
 ## How closely it matches
 
-The simulation engines are pinned to the original single-file script by
-`tests/test_regression.py` (identical results on identical seeds). The revised
+At the `v0.2.0` tag the simulation engines are pinned to the original
+single-file script by `tests/test_regression.py` (identical results on identical
+seeds; the test was removed in 0.3.0). The revised
 report re-ran several analyses with new seeds and more replicates, so its
 Monte Carlo numbers are matched up to Monte Carlo error rather than digit for
 digit:

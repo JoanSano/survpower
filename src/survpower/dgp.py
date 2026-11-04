@@ -1,8 +1,7 @@
 """Event-time generators (report Sections 2, 9, 10 and Appendix A).
 
 All generators take a `numpy.random.Generator` and draw in a fixed order so
-that seeded results are reproducible (and identical to the original report
-script).
+that seeded results are reproducible within one installed version.
 """
 
 from __future__ import annotations

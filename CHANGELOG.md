@@ -23,6 +23,11 @@
 - `closed_form.sample_size_continuous_cph(..., var_x=)`: the covariate variance, as
   an alternative to `sigma_x` (#11).
 - `results.Estimate`: a Monte Carlo value with its MCSE (#11).
+- Executable tutorials: Jupytext `.py` files in `docs/tutorials/`, rendered and
+  executed by `mkdocs-jupyter`. First two: continuous vs. median split, and sample
+  size for a target power. A `tutorials` CI job runs each at
+  `SURVPOWER_TUTORIAL_SIMS=50`; `docs/tutorials/README.md` explains how to add one.
+  The `docs` extra gains `mkdocs-jupyter` and `jupytext` (#12).
 - `censoring.calibrate_censoring_for(sampler, target, seed)`: censoring
   calibration for any event-time generator. The four existing calibrators delegate
   to it (results unchanged) (#9).

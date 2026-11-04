@@ -17,6 +17,8 @@ dependencies:
   - mkdocs>=1.6,<2
   - mkdocs-material>=9
   - mkdocstrings-python
+  - mkdocs-jupyter
+  - jupytext
   - pip
   - pip:
       - -e .   # survpower itself, editable, from this folder

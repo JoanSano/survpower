@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 — 2026-11-04
+
+Milestone M0 (quick wins and Monte Carlo standard errors): #1, #2, #4, #6, #8.
 
 ### Added
 - Gönen & Heller's (2005) concordance probability estimate (#6):

@@ -61,6 +61,6 @@ from .planning import (
 )
 from .simulate import simulate_power, simulate_power_design
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [name for name in dir() if not name.startswith("_")]

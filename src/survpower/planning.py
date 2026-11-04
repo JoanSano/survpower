@@ -174,6 +174,24 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
     return pd.DataFrame(rows), details
 
 
+def detectable_censor_rate(design: StudyDesign, n_eval: int, power: float,
+                           tol: float = 1e-3, max_iter: int = 10) -> float:
+    """Censoring rate at the (unknown) detectable HR. An accrual design's
+    censoring depends on the HR and the detectable HR on the censoring, so
+    iterate the closed-form detectable HR to a fixed point, starting at HR = 1.
+    A fixed --censor-rate does not depend on the HR and is returned as is."""
+    cr = design.censor_rate_for(1.0)
+    if design.accrual_months is None:
+        return cr
+    for _ in range(max_iter):
+        hr = detectable_hr_continuous_cph(n_eval, power, alpha=design.alpha, event_prob=1 - cr,
+                                          rho_sq=design.r2_eff, sides=design.sides)
+        cr, cr_prev = design.censor_rate_for(hr), cr
+        if abs(cr - cr_prev) < tol:
+            break
+    return cr
+
+
 def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> pd.DataFrame:
     """N only: minimum detectable per-SD HR (and concordance) per (N, power),
     closed form and simulation-calibrated. By symmetry of X, 1/HR is
@@ -183,12 +201,7 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
     for n in ns:
         n_eval = design.evaluable(n)
         for pw in powers:
-            # an accrual design's censoring depends weakly on the unknown HR:
-            # anchor at HR = 1, refine at the closed-form detectable HR
-            cr0 = design.censor_rate_for(1.0)
-            hr0 = detectable_hr_continuous_cph(n_eval, pw, alpha=design.alpha, event_prob=1 - cr0,
-                                               rho_sq=design.r2_eff, sides=design.sides)
-            cr = design.censor_rate_for(hr0)
+            cr = detectable_censor_rate(design, n_eval, pw)
             out = estimate_detectable_hr_by_simulation(
                 n=n_eval, target_power=pw, censor_rate=cr, lambda0=design.lambda0,
                 alpha=design.alpha, p=design.n_covariates, r2_target=design.r2,

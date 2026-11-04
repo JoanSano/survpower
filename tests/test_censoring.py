@@ -2,6 +2,9 @@ import numpy as np
 import pytest
 
 from survpower.censoring import censor_rate_from_design, event_probability_exponential
+from survpower.closed_form import detectable_hr_continuous_cph
+from survpower.design import StudyDesign
+from survpower.planning import detectable_censor_rate
 
 
 @pytest.mark.parametrize("hr", [1.0, 1.5])
@@ -48,6 +51,17 @@ def _lf_event_probability(lam, eta, R=3, T=5):
     )
 
 
+def test_docs_example_is_lachin_foulkes_eq_4_1():
+    # the docs example in their units: R = 3, T = 4 years, lambda = 12 ln 2 / 15 and
+    # eta = -ln(0.95) per year; eq. (4.1) gives E(delta), p. 511 gives E(xi) = (eta / lambda) E(delta)
+    lam, eta, R, T = 12 * np.log(2) / 15, -np.log(0.95), 3, 4
+    r = lam + eta
+    death = lam / r * (1 - (np.exp(-(T - R) * r) - np.exp(-T * r)) / (R * r))
+    assert event_probability_exponential(36, 12, 0.05) == pytest.approx(death, abs=1e-12)
+    assert death == pytest.approx(0.685, abs=5e-4)
+    assert eta / lam * death == pytest.approx(0.063, abs=5e-4)  # lost to follow-up
+
+
 def test_lachin_foulkes_section_2_example():
     # Section 2 (p. 509): R = 3, T = 5, E(delta | .20) = .4959 and E(delta | .30) = .6381
     assert _lf_event_probability(0.20, 0.0) == pytest.approx(0.4959, abs=5e-5)
@@ -75,3 +89,19 @@ def test_lachin_foulkes_table_2(eta, death_e, death_c, loss_e, loss_c):
         assert p == pytest.approx(death, abs=5e-4)
         # their E(xi | lambda, eta) = (eta / lambda) E(delta | lambda, eta)
         assert eta / lam * p == pytest.approx(loss, abs=5e-4)
+
+
+@pytest.mark.parametrize("A, F, dropout, median_os, n", [
+    (36, 12, 0.05, 15, 100), (36, 12, 0.05, 15, 300), (12, 0.5, 0.2, 60, 100),
+])
+def test_detectable_censor_rate_is_a_fixed_point(A, F, dropout, median_os, n):
+    # the censoring used for the detectable HR is the censoring at that HR
+    design = StudyDesign(accrual_months=A, followup_months=F, dropout_annual=dropout,
+                         median_os=median_os)
+    cr = detectable_censor_rate(design, n, 0.8)
+    hr = detectable_hr_continuous_cph(n, 0.8, event_prob=1 - cr)
+    assert design.censor_rate_for(hr) == pytest.approx(cr, abs=2e-3)
+
+
+def test_detectable_censor_rate_fixed_rate_ignores_hr():
+    assert detectable_censor_rate(StudyDesign(censor_rate=0.3), 100, 0.8) == 0.3

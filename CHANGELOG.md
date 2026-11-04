@@ -37,6 +37,14 @@
   branch at `/survpower/<branch>/`, with a branch selector in the header.
   Links from before this change redirect to `main/`. `docs/dev/` is never
   published (#2).
+- Detectable-effect mode with an accrual design iterates the closed-form detectable
+  HR and the design's censoring rate to a fixed point, instead of one refinement
+  from HR = 1 (`planning.detectable_censor_rate`). The difference is negligible in
+  typical designs and about 1 percentage point of censoring in extreme ones.
+- Docs and the CLI design summary no longer suggest that the censoring at HR = 1
+  is the one used: the censoring page lists which HR each planning mode uses, and
+  describes how censoring is generated (always exponential; the calendar only
+  sets the fraction).
 
 ### Deprecated
 - `survpower.report`, the `survpower report` subcommand and

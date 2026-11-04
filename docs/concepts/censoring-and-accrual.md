@@ -86,7 +86,32 @@ censoring as described above.
     [#16](https://github.com/JoanSano/survpower/issues/16).
 
 Example: median OS 15 months, 36 months accrual, 12 months follow-up and 5%
-dropout per year give 31.5% censoring at HR = 1.
+dropout per year give 31.5% censoring at HR = 1. This is Lachin and Foulkes's
+eq. 4.1 with R = 3 and T = 4 years (see the cross-check below).
+
+### Which HR sets the censored fraction
+
+Under a calendar the censored fraction depends on the HR. A biomarker effect
+spreads the patients' hazards, and averaging over that spread changes how many
+have their event before the analysis date. In the example it is 31.5% at HR = 1,
+31.6% at HR = 1.15 and 32.2% at HR = 1.5 (per SD). The value at HR = 1 is only
+a reference, which the CLI prints in its design summary. Each planning mode
+uses the fraction at the HR it is planning for, and reports it in the
+`censor_rate` column:
+
+| Question | HR used for the censored fraction |
+|---|---|
+| Power (`--hr` and `--n`) | each HR given |
+| Sample size (`--hr`) | each HR given |
+| Minimum detectable HR (`--n`) | the detectable HR itself. It is unknown in advance, so the closed-form detectable HR and the fraction are iterated together until they agree, starting at HR = 1 |
+| Concordance questions (`--c`, `--c0`, `--precision`) | the HR implied by the target C |
+
+The simulation-calibrated detectable HR can differ slightly from the
+closed-form one where the fraction is fixed. Within that gap the fraction
+changes by about 0.1 percentage points in typical designs.
+
+A fixed `--censor-rate` does not depend on the HR. The same fraction is used at
+every HR, and \(\lambda_c\) is recalibrated to hit it.
 
 ### The event probability in closed form
 

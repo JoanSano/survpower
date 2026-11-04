@@ -229,7 +229,8 @@ def _print_assumptions(design: StudyDesign) -> None:
     else:
         print(f"  censoring          : from design -- {design.accrual_months:g} mo accrual + "
               f"{design.followup_months:g} mo follow-up, {design.dropout_annual:.0%}/yr dropout "
-              f"(~{design.censor_rate_for(1.0):.0%} censored at HR = 1)")
+              f"(~{design.censor_rate_for(1.0):.0%} censored at HR = 1; it depends on the HR, "
+              f"see the censor_rate column for the value used)")
     print(f"  non-evaluable      : {design.non_evaluable:.0%} of enrolled")
     print("  adjustment         : " + ("none" if design.n_covariates == 0 else
                                        f"{design.n_covariates} covariate(s), R^2 = {design.r2:g}"))

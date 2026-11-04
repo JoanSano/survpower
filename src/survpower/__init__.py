@@ -23,7 +23,7 @@ from .calibration import (
     estimate_detectable_hr_by_simulation,
     estimate_required_n_by_simulation,
 )
-from .censoring import calibrate_censoring_rate, censor_rate_from_design
+from .censoring import calibrate_censoring_rate, censor_rate_from_design, event_probability_exponential
 from .closed_form import (
     detectable_hr_continuous_cph,
     dichotomized_power,

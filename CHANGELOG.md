@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- Log-rank test for the median split (#34). `survpower.fitting.logrank_1d` is the Cox
+  score test of beta = 0 (equal to lifelines' `logrank_test` without ties).
+  `simulate_continuous_vs_dichotomized` reports `power_dich_logrank` with its MCSE on
+  the same cohorts as the Wald test, and the power table gains
+  `power_dichotomized_logrank_sim`: the simulated counterpart of the Schoenfeld closed
+  form, which is the asymptotic log-rank power.
 - Monte Carlo standard errors in every simulation output (#1). The new module
   `survpower.results` has `summarize_replicates` and MCSE helpers (Morris, White &
   Crowther 2019). Every `simulate_*` dict, `simulate_cindex_power` and every

@@ -27,7 +27,7 @@ from .censoring import (
     calibrate_censoring_waning,
 )
 from .dgp import gen_adjustment_covariates, gen_crossing, gen_waning
-from .fitting import ENGINES, cox_fit_1d, fit_cox, rejects, wald_rejects
+from .fitting import ENGINES, cox_fit_1d, fit_cox, logrank_1d, rejects, wald_rejects
 from .results import exp_mean_mcse, mean_mcse, proportion_mcse, sd_mcse, summarize_replicates
 
 
@@ -192,12 +192,14 @@ def simulate_continuous_vs_dichotomized(
     simulated cohorts (report Table 1). The dichotomized fit uses
     G = 1{X > median(X)}; its mean coefficient gives the fitted group HR, to
     compare with the plug-in HR ** 1.5958, with the 95% CI a typical trial
-    reports and the expected events per group. Uses the fast engine (identical
-    continuous decisions to `simulate_power` with the same seed)."""
+    reports and the expected events per group. The groups are also compared
+    with the log-rank test (`power_dich_logrank`), whose power Schoenfeld's
+    closed form predicts. Uses the fast engine (identical continuous decisions
+    to `simulate_power` with the same seed)."""
     beta = np.log(hr)
     lam_c = calibrate_censoring_rate(beta, censor_rate, lambda0=lambda0, seed=seed + 999)
     rng = np.random.default_rng(seed)
-    rej_cont = rej_dich = 0
+    rej_cont = rej_dich = rej_lr = 0
     events, bg, bc, se_gs, ev_high = [], [], [], [], []
     for _ in tqdm(range(n_sims), desc=f"cont vs dich n={n}", leave=False):
         X = rng.standard_normal(n)
@@ -209,6 +211,7 @@ def simulate_continuous_vs_dichotomized(
         G = (X > np.median(X)).astype(float)
         bg_hat, se_g = cox_fit_1d(time_, event, G)
         rej_dich += wald_rejects(bg_hat / se_g, beta, alpha, sides)
+        rej_lr += wald_rejects(logrank_1d(time_, event, G), beta, alpha, sides)
         bg.append(bg_hat); bc.append(b); se_gs.append(se_g)
         ev_high.append(event[G == 1].sum())
     return dict(
@@ -217,6 +220,8 @@ def simulate_continuous_vs_dichotomized(
         group_hr_fitted=round(float(np.exp(np.nanmean(bg))), 3), lam_c=lam_c,
         power_cont_mcse=_r4(proportion_mcse(rej_cont / n_sims, n_sims)),
         power_dich_mcse=_r4(proportion_mcse(rej_dich / n_sims, n_sims)),
+        power_dich_logrank=round(rej_lr / n_sims, 3),
+        power_dich_logrank_mcse=_r4(proportion_mcse(rej_lr / n_sims, n_sims)),
         group_hr_fitted_mcse=_r4(exp_mean_mcse(bg)),
         # the 95% Wald CI a typical trial reports: mean log-HR +/- 1.96 * mean SE
         group_hr_ci_low=round(float(np.exp(np.nanmean(bg) - 1.96 * np.nanmean(se_gs))), 3),

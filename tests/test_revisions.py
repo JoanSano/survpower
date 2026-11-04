@@ -73,3 +73,25 @@ def test_omitting_prognostic_covariates_attenuates_and_costs_power():
     r = simulate_adjusted_vs_unadjusted(600, 1.15, 0.2, p=5, sigma_z=1.0, n_sims=40, seed=3)
     assert r["mean_HR_unadjusted"] < r["mean_HR_adjusted"]
     assert r["power_unadjusted"] < r["power_adjusted"]
+
+
+def test_logrank_1d_matches_lifelines():
+    from lifelines.statistics import logrank_test
+    from survpower.fitting import logrank_1d
+    rng = np.random.default_rng(3)
+    for _ in range(20):
+        G = (rng.random(150) < 0.4).astype(float)
+        T = rng.exponential(1 / np.exp(0.4 * G))
+        C = rng.exponential(2.0, 150)
+        t, e = np.minimum(T, C), T <= C
+        chi2 = logrank_test(t[G == 1], t[G == 0], e[G == 1], e[G == 0]).test_statistic
+        assert logrank_1d(t, e, G) ** 2 == pytest.approx(chi2, rel=1e-10)
+
+
+def test_schoenfeld_predicts_median_split_logrank_power():
+    # Schoenfeld's formula is the log-rank power; the Wald test on G matches it
+    r = simulate_continuous_vs_dichotomized(500, 1.15, 0.2, n_sims=2000, seed=1)
+    closed = dichotomized_power(500, 1.15, 0.2, method="schoenfeld")
+    mcse = r["power_dich_logrank_mcse"]
+    assert abs(r["power_dich_logrank"] - closed) < max(3 * mcse, 0.02)
+    assert abs(r["power_dich_logrank"] - r["power_dich"]) < 3 * mcse

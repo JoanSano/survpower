@@ -49,6 +49,27 @@ def cox_fit_1d(time: np.ndarray, event: np.ndarray, x: np.ndarray,
     return b, float(1.0 / np.sqrt(info))
 
 
+def logrank_1d(time: np.ndarray, event: np.ndarray, x: np.ndarray) -> float:
+    """Cox score test of beta = 0 for one covariate, as a z statistic
+    (positive when higher x has more events than expected). For a binary
+    group indicator without tied times this is the two-group log-rank test,
+    the test Schoenfeld's (1983) formula gives the power of.
+
+    Returns nan if there are no events.
+    """
+    event = np.asarray(event).astype(bool)
+    if event.sum() < 1:
+        return float("nan")
+    o = np.argsort(-np.asarray(time), kind="mergesort")  # descending: cumsums are risk sets
+    d, x = event[o], np.asarray(x, dtype=float)[o]
+    s0, s1, s2 = np.arange(1, len(x) + 1), np.cumsum(x), np.cumsum(x * x)
+    xbar = s1[d] / s0[d]
+    var = np.sum(s2[d] / s0[d] - xbar ** 2)
+    if not var > 0:
+        return float("nan")
+    return float(np.sum(x[d] - xbar) / np.sqrt(var))
+
+
 def wald_rejects(z: float, beta: float, alpha: float, sides: int = 2) -> bool:
     """Wald decision from a z statistic. One-sided tests reject only in the
     direction of the true effect (sign of `beta`; beta = 0 counts as positive)."""

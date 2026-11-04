@@ -14,24 +14,76 @@ N = \lceil D / P(\text{event}) \rceil .
 So the censoring assumption matters as much as the effect size. Every table
 reports `expected_events`. Quote it in the protocol.
 
-## Two ways to specify censoring
+## How censoring is generated
 
-**Directly.** `--censor-rate 0.2` means 20% of patients are censored overall.
-The simulation uses exponential censoring \(C \sim \text{Exp}(\lambda_c)\),
-with \(\lambda_c\) found by bisection so that \(P(C < T) = 0.2\) under the
-planned effect.
+Every simulation censors the same way, whichever option below is used. Each
+patient gets two independent clocks, both measured from that patient's entry:
+
+\[
+T \sim \text{Exp}\!\left(\lambda_0 e^{\beta X}\right), \qquad
+C \sim \text{Exp}(\lambda_c),
+\]
+
+and we observe \(\min(T, C)\), with an event when \(T \le C\). \(C\) has the
+same rate \(\lambda_c\) for every patient and does not depend on \(T\) or
+\(X\), so censoring is independent and non-informative. Whichever clock runs
+out first wins. For one patient,
+
+\[
+P(\text{censored} \mid X) = \frac{\lambda_c}{\lambda_c + \lambda_0 e^{\beta X}},
+\]
+
+and the censored fraction of the trial is the average of this over
+\(X \sim N(0, 1)\).
+
+The user does not give \(\lambda_c\). They give a **censored fraction**
+\(p_c\), and \(\lambda_c\) is found by bisection so that \(P(C < T) = p_c\)
+under the planned effect (`calibrate_censoring_rate`). The two options below
+differ only in how \(p_c\) is chosen. **Censoring in the simulated data is
+always exponential.**
+
+## Two ways to choose the censored fraction
+
+**Directly.** `--censor-rate 0.2` sets \(p_c = 0.2\): 20% of patients are
+censored overall.
 
 **From the trial calendar.** Give `--accrual-months A --followup-months F`
-(optionally `--dropout d`):
+(optionally `--dropout d`), and \(p_c\) is the fraction this calendar would
+censor:
 
-* entry is uniform over \([0, A]\), and the analysis is \(F\) months after the
-  last enrolment, so administrative censoring is \(C_{\text{adm}} \sim U(F, A + F)\);
-* dropout is exponential with \(\lambda_d = -\ln(1 - d)/12\) per month.
+* Patients enter uniformly over the first \(A\) months. The analysis takes
+  place \(F\) months after the last enrolment, at calendar month \(A + F\).
+  So \(F\) is the **minimum** follow-up, not a window in which censoring
+  happens.
+* A patient entering at calendar month \(e\) can be followed for
+  \(C_{\text{adm}} = A + F - e\) months before the analysis date. This is the
+  *administrative censoring time*, measured from that patient's entry. With
+  uniform entry, \(C_{\text{adm}} \sim U(F, A + F)\): the first patient
+  enrolled can be followed for \(A + F\) months, the last for \(F\).
+* Independently, patients can be lost to follow-up at any time after entry,
+  including during accrual. This dropout is exponential with rate
+  \(\lambda_d = -\ln(1 - d)/12\) per month. The logarithm turns the annual
+  loss fraction \(d\) into the constant rate that loses exactly that fraction
+  in a year: \(e^{-12\lambda_d} = 1 - d\). All other independent censoring
+  (withdrawal, moving away) belongs in \(d\).
+* The calendar's censoring time is \(\min(C_{\text{adm}}, \text{dropout})\).
 
-`censor_rate_from_design` computes the implied \(P(C < T)\) by Monte Carlo,
-and the simulations then use exponential censoring at that rate. Matching the
-event probability is what matters for power; the shape of the censoring
-distribution is second order.
+`censor_rate_from_design` computes the fraction this censors by Monte Carlo,
+and `event_probability_exponential` computes it in closed form (below). Only
+that fraction is passed to the simulations, which then use exponential
+censoring as described above.
+
+!!! note "Same fraction, different timing"
+    The simulated trials match the calendar's **number** of censored patients,
+    not **when** they are censored. Under the calendar nobody is censored
+    administratively before \(F\) months. Exponential censoring is most likely
+    right after entry. Cox power depends mostly on the number of events, so
+    matching the fraction is expected to be enough for the Wald test. But the
+    timing changes which patients have events, and it affects Harrell's C
+    (whose limit depends on the censoring distribution) and Uno's C with a
+    fixed horizon more. That this is second order has not yet been checked;
+    simulating the calendar censoring itself is planned in
+    [#16](https://github.com/JoanSano/survpower/issues/16).
 
 Example: median OS 15 months, 36 months accrual, 12 months follow-up and 5%
 dropout per year give 31.5% censoring at HR = 1.

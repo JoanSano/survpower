@@ -12,6 +12,33 @@
 Power is the rejection rate over replicates. Its Monte Carlo SE is at most
 \(\sqrt{0.25/n_{\text{sims}}}\) (0.016 at 1000 replicates). Tables show a Wilson 95% interval.
 
+## Performance measures and Monte Carlo SEs
+
+Every simulation output carries `n_sims` and, next to each Monte Carlo
+estimate `x`, a column `x_mcse` (helpers in `survpower.results`). The
+formulas follow Morris, White & Crowther (2019, Table 6), over
+\(n_{\text{sims}}\) replicates with estimates \(\hat\beta_i\):
+
+| Measure | Estimate | MCSE |
+|---|---|---|
+| power / type-I error / coverage | \(\hat p\) | \(\sqrt{\hat p(1-\hat p)/n_{\text{sims}}}\) |
+| bias (`bias_beta`) | \(\overline{\hat\beta} - \beta\) | \(\mathrm{SD}(\hat\beta)/\sqrt{n_{\text{sims}}}\) |
+| empirical SE (`emp_se`) | \(\mathrm{SD}(\hat\beta)\) | \(\mathrm{SD}(\hat\beta)/\sqrt{2(n_{\text{sims}}-1)}\) |
+| mean HR (`mean_HR_hat`) | \(e^{\overline{\hat\beta}}\) | \(e^{\overline{\hat\beta}}\,\mathrm{SD}(\hat\beta)/\sqrt{n_{\text{sims}}}\) (delta method) |
+
+Coverage is that of the Wald interval \(\hat\beta \pm z_{1-\alpha/2}\,\widehat{\mathrm{SE}}\),
+and `mean_model_se` / `rel_err_model_se` compare the average model SE with the
+empirical SE.
+
+- **Bias is on the log-HR scale.** `mean_HR_hat` is kept for continuity but is
+  inflated by about \(\exp(\mathrm{Var}(\hat\beta)/2)\) even when \(\hat\beta\)
+  is unbiased.
+- **Failed fits.** A replicate whose fit fails (fewer than two events, or a
+  non-positive information) is counted in `n_failed`. It counts as "not
+  rejected" in power and is left out of the other moments.
+- **Power at 0 or 1.** The binomial MCSE is then exactly 0, so the planning
+  tables also report a Wilson 95% interval.
+
 ## Engines
 
 | Engine | Used for | Notes |

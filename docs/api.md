@@ -11,6 +11,7 @@ re-exported from the top-level package (`from survpower import ...`).
 | `survpower.closed_form` | Schoenfeld / Hsieh–Lavori, Freedman and median-split formulas |
 | `survpower.calibration` | simulation-calibrated N and detectable HR, with bootstrap MC intervals |
 | `survpower.simulate` | Monte Carlo power engines (PH, dichotomized, adjusted, omitted covariates, non-PH) |
+| `survpower.results` | performance measures with Monte Carlo SEs (Morris et al. 2019) |
 | `survpower.censoring` | censoring calibration and the accrual calendar |
 | `survpower.sensitivity` | collinearity, EPV, prognostic / omitted covariate and non-PH studies |
 | `survpower.fitting` | fast univariate Cox solver and Wald decisions |
@@ -56,6 +57,10 @@ re-exported from the top-level package (`from survpower import ...`).
                 simulate_power_with_adjustment, simulate_epv_diagnostic,
                 simulate_power_with_heterogeneous_adjustment, simulate_adjusted_vs_unadjusted,
                 simulate_waning_effect, simulate_crossing_hazards]
+
+## Monte Carlo performance measures
+
+::: survpower.results
 
 ## Censoring
 

@@ -51,6 +51,7 @@ from .concordance import (
     simulate_cindex_power,
 )
 from .design import StudyDesign
+from .results import proportion_mcse
 from .simulate import simulate_continuous_vs_dichotomized, simulate_power_design
 
 #: Below this many evaluable patients the U-statistic SE of C is anti-
@@ -95,7 +96,9 @@ def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
                 n_enrolled=n, n_evaluable=n_eval, hr=round(hr, 4), hr_per_sd=round(hr_sd, 4),
                 c_index=round(c_of_beta(np.log(hr_sd)), 4),
                 censor_rate=round(cr, 3), mean_events=round(mean_ev, 1),
-                power_sim=round(power, 3), power_ci_low=round(lo, 3), power_ci_high=round(hi, 3),
+                power_sim=round(power, 3),
+                power_sim_mcse=round(proportion_mcse(power, design.n_sims), 4),
+                power_ci_low=round(lo, 3), power_ci_high=round(hi, 3), n_sims=design.n_sims,
                 power_closed_form=round(closed, 3),
                 power_dichotomized_sim=round(float(dich_sim), 3),
                 power_dich_freedman=round(float(dich["freedman"]), 3),
@@ -281,8 +284,10 @@ def run_cindex_benchmark_mode(design: StudyDesign, cs: list, c0s: list,
                     closed = benchmark_power(n_eval, ctx["c_limit"], c0, ctx["sigma_c"], design.alpha)
                     rows.append(dict(
                         base, n_enrolled=n, n_evaluable=n_eval, mean_events=ev,
-                        power_sim=round(pw, 3), power_ci_low=round(lo, 3),
-                        power_ci_high=round(hi, 3), power_closed_form=round(closed, 3),
+                        power_sim=round(pw, 3),
+                        power_sim_mcse=round(proportion_mcse(pw, design.n_sims), 4),
+                        power_ci_low=round(lo, 3), power_ci_high=round(hi, 3),
+                        n_sims=design.n_sims, power_closed_form=round(closed, 3),
                         summary=(f"With N = {n} patients enrolled ({n_eval} evaluable; ~{ev:.0f} "
                                  f"events), {question} has {pw:.0%} power (95% simulation CI "
                                  f"{lo:.0%} to {hi:.0%})."),
@@ -333,15 +338,18 @@ def run_cindex_precision_mode(design: StudyDesign, cs: list, half_widths: list |
         for n_eval, n_enrol, h in targets:
             n_enrol = n_enrol if n_enrol is not None else design.enrolled(n_eval)
             hw = precision_half_width(n_eval, ctx["sigma_c"], level)
-            sim_hw = np.nan
+            sim_hw = sim_hw_mcse = np.nan
+            n_check = min(check_sims, design.n_sims)
             if n_eval <= 4000:
                 r = simulate_cindex_power(n_eval, ctx["beta"], ctx["lam_c"],
-                                          n_sims=min(check_sims, design.n_sims),
+                                          n_sims=n_check,
                                           method=design.c_estimator, tau=ctx["tau"],
                                           lambda0=design.lambda0, seed=design.seed + 101 * combo)
-                sim_hw = 1.96 * r["sd_c"]
+                sim_hw, sim_hw_mcse = 1.96 * r["sd_c"], 1.96 * r["sd_c_mcse"]
             row = dict(base, n_enrolled=n_enrol, n_evaluable=n_eval,
-                       half_width_closed_form=round(hw, 4), half_width_simulated=round(sim_hw, 4))
+                       half_width_closed_form=round(hw, 4), half_width_simulated=round(sim_hw, 4),
+                       half_width_simulated_mcse=round(sim_hw_mcse, 4),
+                       n_sims=n_check if n_eval <= 4000 else 0)
             if h is not None:
                 row["target_half_width"] = h
             row["summary"] = (

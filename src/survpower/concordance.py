@@ -48,6 +48,7 @@ from scipy.special import expit
 from ._utils import tqdm
 from .baseline import DEFAULT_LAMBDA0
 from .fitting import cox_fit_1d, wald_rejects
+from .results import mean_mcse, proportion_mcse, sd_mcse
 
 ESTIMATORS = ("harrell", "uno")
 RULE_OF_THUMB_KAPPA = 1.64  # fitted to the exact inverse of eq. 25 (Appendix B.1)
@@ -221,7 +222,9 @@ def simulate_cindex_power(
     * power_c05  : test of C = 0.5 from the estimated C and its SE (`sides`)
     * power_cc0  : one-sided test of H0: C <= c0 at level alpha (if c0 given)
 
-    plus the mean / SD of the estimated C, its mean SE, events and mean HR.
+    plus the mean / SD of the estimated C, its mean SE, events and mean HR,
+    each Monte Carlo estimate with a `*_mcse` column. Cohorts with fewer than
+    two events are skipped (counted in `n_failed`, not rejected).
     The biomarker is oriented by the sign of beta (risk score = sign(beta) X).
     """
     if method == "uno" and tau is None:
@@ -255,9 +258,15 @@ def simulate_cindex_power(
         sd_c=float(np.nanstd(cs, ddof=1)) if len(cs) > 1 else float("nan"),
         mean_se_c=float(np.nanmean(ses)) if len(ses) else float("nan"),
         mean_hr=float(np.nanmean(np.exp(bh))) if len(bh) else float("nan"),
+        power_cox_mcse=proportion_mcse(rej_cox / n_sims, n_sims),
+        power_c05_mcse=proportion_mcse(rej_c05 / n_sims, n_sims),
+        mean_c_mcse=mean_mcse(cs), sd_c_mcse=sd_mcse(cs),
+        mean_se_c_mcse=mean_mcse(ses), mean_hr_mcse=mean_mcse(np.exp(bh)),
+        n_failed=n_sims - len(cs),
     )
     if c0 is not None:
-        out.update(c0=c0, power_cc0=float(rej_cc0) / n_sims)
+        out.update(c0=c0, power_cc0=float(rej_cc0) / n_sims,
+                   power_cc0_mcse=proportion_mcse(float(rej_cc0) / n_sims, n_sims))
     if method == "uno":
         out["tau"] = tau
     return out

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Monte Carlo standard errors in every simulation output (#1). The new module
+  `survpower.results` has `summarize_replicates` and MCSE helpers (Morris, White &
+  Crowther 2019). Every `simulate_*` dict, `simulate_cindex_power` and every
+  `sensitivity.run_*` table now carries `n_sims`, `n_failed` and a `*_mcse` column per
+  estimate, adding bias, empirical SE and coverage where a true log-HR exists. The
+  planning tables add `power_sim_mcse` and `half_width_simulated_mcse`. The CLI CSVs
+  gain the same columns.
+- `simulate_power(..., details=True)` and `simulate_power_design(..., details=True)`
+  return the full dict. The default tuple return is unchanged.
+
+### Removed
+- `survpower._utils.mc_se` (unused; replaced by `survpower.results.proportion_mcse`).
+
 ## 0.2.0 — 2026-11-03
 
 Aligned with the revised report (November 3, 2026).

@@ -105,7 +105,7 @@ def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
                 power_dich_schoenfeld=round(float(dich["schoenfeld"]), 3),
                 summary=(
                     f"With N = {n} patients enrolled ({n_eval} evaluable; ~{mean_ev:.0f} "
-                    f"expected events), a {design.test_label()} has {power:.0%} power "
+                    f"expected events, {cr:.0%} censored), a {design.test_label()} has {power:.0%} power "
                     f"(95% simulation CI {lo:.0%} to {hi:.0%}) to detect a hazard ratio of "
                     f"{design.hr_label(hr_sd)}{design.adjustment_label()}."
                 ),
@@ -158,7 +158,7 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
                 summary=(
                     f"To detect a hazard ratio of {design.hr_label(hr_sd)} with {pw:.0%} power "
                     f"({design.test_label()}{design.adjustment_label()}), about "
-                    f"{out['confirmed_mean_events']:.0f} events are required: "
+                    f"{out['confirmed_mean_events']:.0f} events are required ({cr:.0%} censored): "
                     f"N = {out['n_calibrated']} evaluable / {n_enrol} enrolled patients "
                     f"(simulation-calibrated{ci_txt}; confirmed power "
                     f"{out['confirmed_power']:.0%}; closed-form N = "
@@ -243,7 +243,7 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
                 n_sims=design.n_sims,
                 summary=(
                     f"With N = {n} patients enrolled ({n_eval} evaluable; "
-                    f"~{out['confirmed_mean_events']:.0f} expected events), a "
+                    f"~{out['confirmed_mean_events']:.0f} expected events, {cr:.0%} censored), a "
                     f"{design.test_label()}{design.adjustment_label()} has {pw:.0%} power to "
                     f"detect a hazard ratio of {design.hr_label(hr_sd)} or larger, or "
                     f"{design.to_per_unit(1 / hr_sd):.3g} or smaller for a protective effect"
@@ -321,7 +321,7 @@ def run_cindex_benchmark_mode(design: StudyDesign, cs: list, c0s: list,
                         power_ci_low=round(lo, 3), power_ci_high=round(hi, 3),
                         n_sims=design.n_sims, power_closed_form=round(closed, 3),
                         summary=(f"With N = {n} patients enrolled ({n_eval} evaluable; ~{ev:.0f} "
-                                 f"events), {question} has {pw:.0%} power (95% simulation CI "
+                                 f"events, {ctx['censor_rate']:.0%} censored), {question} has {pw:.0%} power (95% simulation CI "
                                  f"{lo:.0%} to {hi:.0%})."),
                     ))
                     combo += 1
@@ -347,7 +347,8 @@ def run_cindex_benchmark_mode(design: StudyDesign, cs: list, c0s: list,
                         n_sims=design.n_sims, calibration=out["method"],
                         summary=(f"For {target:.0%} power in {question}, N = {n_eval} evaluable / "
                                  f"{n_enrol} enrolled patients are required (~"
-                                 f"{out['confirmed_mean_events']:.0f} events; simulation-confirmed "
+                                 f"{out['confirmed_mean_events']:.0f} events, {ctx['censor_rate']:.0%} censored; "
+                                 f"simulation-confirmed "
                                  f"power {out['confirmed_power']:.0%}; closed-form N = "
                                  f"{design.enrolled(n0)} enrolled)."),
                     ))
@@ -388,7 +389,8 @@ def run_cindex_precision_mode(design: StudyDesign, cs: list, half_widths: list |
             if h is not None:
                 row["target_half_width"] = h
             row["summary"] = (
-                f"With N = {n_enrol} patients enrolled ({n_eval} evaluable), the {level:.0%} "
+                f"With N = {n_enrol} patients enrolled ({n_eval} evaluable, "
+                f"{ctx['censor_rate']:.0%} censored), the {level:.0%} "
                 f"confidence interval for {design.estimator_label()} (true C = {c:g}) has an "
                 f"expected half-width of +/-{hw:.3f}"
                 + (f" (simulated: +/-{sim_hw:.3f})" if np.isfinite(sim_hw) else "") + "."

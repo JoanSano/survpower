@@ -94,10 +94,9 @@ eq. 4.1 with R = 3 and T = 4 years (see the cross-check below).
 Under a calendar the censored fraction depends on the HR. A biomarker effect
 spreads the patients' hazards, and averaging over that spread changes how many
 have their event before the analysis date. In the example it is 31.5% at HR = 1,
-31.6% at HR = 1.15 and 32.2% at HR = 1.5 (per SD). The value at HR = 1 is only
-a reference, which the CLI prints in its design summary. Each planning mode
-uses the fraction at the HR it is planning for, and reports it in the
-`censor_rate` column:
+31.6% at HR = 1.15 and 32.2% at HR = 1.5 (per SD). The value at HR = 1 is only a
+reference. Each planning mode uses the fraction at the HR it is planning for
+and reports it in the summary sentence and the `censor_rate` column:
 
 | Question | HR used for the censored fraction |
 |---|---|

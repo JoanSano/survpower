@@ -53,7 +53,7 @@ survpower --hr 1.25 \
 
 The censoring rate follows from uniform accrual over 36 months, 12 further
 months of follow-up and 5% annual loss to follow-up, evaluated at the planned
-HR of 1.25 (the `censor_rate` column). N is inflated for the 10%
+HR of 1.25. The summary sentence and the `censor_rate` column state it. N is inflated for the 10%
 of patients without an evaluable biomarker. See
 [Censoring, accrual and attrition](concepts/censoring-and-accrual.md).
 

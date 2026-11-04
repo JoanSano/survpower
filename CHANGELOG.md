@@ -41,10 +41,11 @@
   HR and the design's censoring rate to a fixed point, instead of one refinement
   from HR = 1 (`planning.detectable_censor_rate`). The difference is negligible in
   typical designs and about 1 percentage point of censoring in extreme ones.
-- Docs and the CLI design summary no longer suggest that the censoring at HR = 1
-  is the one used: the censoring page lists which HR each planning mode uses, and
-  describes how censoring is generated (always exponential; the calendar only
-  sets the fraction).
+- Every summary sentence states the censored fraction it used (e.g. "~97 expected
+  events, 51% censored"). With an accrual design the CLI design summary no longer
+  prints the fraction at HR = 1, which no result uses. The censoring page lists
+  which HR each planning mode uses, and describes how censoring is generated
+  (always exponential; the calendar only sets the fraction).
 
 ### Deprecated
 - `survpower.report`, the `survpower report` subcommand and

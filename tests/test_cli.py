@@ -23,12 +23,24 @@ def test_power_mode(tmp_path):
     assert df["power_sim"].between(0, 1).all()
     assert df["summary"].str.contains("power").all()
     assert df["summary"].str.contains("A median-split analysis of the same cohorts").all()
+    assert (df["split_hr_ci_low"] < df["split_hr"]).all() and (df["split_hr"] < df["split_hr_ci_high"]).all()
+    assert (df["split_events_high"] + df["split_events_low"]).round(0).equals(df["mean_events"].round(0))
+    assert (df["split_median_os_high"] < df["split_median_os_low"]).all()  # HR > 1: high = worse
+
+
+def test_median_split_in_sample_size_and_detectable_modes(tmp_path):
+    ss = pd.read_csv(run(tmp_path / "ss", "--hr", "1.3") / "sample_size.csv").iloc[0]
+    assert "at that N it would have" in ss["summary"] and ss["split_source"] == "simulated"
+    de = pd.read_csv(run(tmp_path / "de", "--n", "200") / "detectable_effect.csv").iloc[0]
+    assert "At this N and HR, a median-split analysis" in de["summary"]
+    assert de["split_power"] < de["confirmed_power"] + 0.1  # the split loses power
 
 
 def test_power_mode_median_split_closed_form_and_adjusted(tmp_path):
     df = pd.read_csv(run(tmp_path / "ll", "--hr", "1.25", "--n", "200", "--engine", "lifelines")
                      / "power_analysis.csv")
-    assert df["summary"].iloc[0].endswith("(Schoenfeld closed form).")
+    assert "Schoenfeld closed form)" in df["summary"].iloc[0]
+    assert df["split_source"].iloc[0] == "closed form"
     df = pd.read_csv(run(tmp_path / "adj", "--hr", "1.25", "--n", "200", "--n-covariates", "2",
                          "--r2", "0.1") / "power_analysis.csv")
     assert "median-split" not in df["summary"].iloc[0]

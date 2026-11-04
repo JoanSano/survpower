@@ -107,6 +107,36 @@ def dichotomized_design(hr_per_sd: float, censor_rate: float) -> tuple[float, fl
     return ghr, p_con, p_exp
 
 
+def median_split_median_survival(hr_per_sd: float, lambda0: float) -> tuple[float, float]:
+    """Model-based median survival (low, high) of the two median-split groups
+    of X ~ N(0, 1): S_g(t) = E[exp(-lambda0 e^{beta X} t) | group g], solved
+    for S_g(t) = 1/2. Not Kaplan-Meier: it exists however heavy the censoring."""
+    from scipy.integrate import quad
+
+    beta = np.log(hr_per_sd)
+
+    def surv(t, lo, hi):
+        f = lambda x: norm.pdf(x) * np.exp(-lambda0 * np.exp(beta * x) * t)
+        return quad(f, lo, hi)[0] / 0.5
+
+    m0 = np.log(2.0) / lambda0
+    medians = []
+    for lo, hi in ((-12.0, 0.0), (0.0, 12.0)):  # N(0, 1) mass beyond 12 SD is < 1e-32
+        medians.append(float(brentq(lambda t: surv(t, lo, hi) - 0.5, m0 * 1e-4, m0 * 1e4)))
+    return medians[0], medians[1]
+
+
+def median_split_expected_ci(n: int, hr_per_sd: float, censor_rate: float,
+                             level: float = 0.95) -> tuple[float, float, float, float]:
+    """Closed-form fallback for a median-split trial of n subjects: plug-in
+    group HR, the 95% Wald CI a typical trial reports (var log HR ~ 1/D_low +
+    1/D_high) and expected events (low, high)."""
+    ghr, p_con, p_exp = dichotomized_design(hr_per_sd, censor_rate)
+    d_low, d_high = n / 2 * p_con, n / 2 * p_exp
+    half = norm.ppf(0.5 + level / 2) * np.sqrt(1 / d_low + 1 / d_high)
+    return float(ghr * np.exp(-half)), float(ghr * np.exp(half)), float(d_low), float(d_high)
+
+
 def _two_sided_alpha(alpha: float, sides: int) -> float:
     # lifelines' formulas are two-sided; one-sided at alpha has the same
     # normal-approximation power as two-sided at 2 * alpha

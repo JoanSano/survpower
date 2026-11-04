@@ -49,10 +49,18 @@
   prints the fraction at HR = 1, which no result uses. The censoring page lists
   which HR each planning mode uses, and describes how censoring is generated
   (always exponential; the calendar only sets the fraction).
-- Summaries: the power mode adds the median-split power (simulated on the same
-  cohorts with the fast engine, Schoenfeld closed form otherwise; unadjusted
-  analyses only), and the concordance questions (`--c0`, `--precision`) state the
-  HR the target C implies, per SD and, with `--biomarker-sd`, per unit.
+- Summaries: the concordance questions (`--c0`, `--precision`) state the HR the
+  target C implies, per SD and, with `--biomarker-sd`, per unit.
+- Median-split comparison in every HR planning mode (unadjusted analyses only):
+  power, the fitted high-vs-low HR with the 95% CI a typical trial reports, the
+  plug-in HR (HR per SD^1.596), expected events and model-based median OS per
+  group. Power mode reports it at the given N, sample-size mode at the N a
+  median split needs, detectable-HR mode at the detectable HR. It is simulated with
+  the fast engine and closed form otherwise, in the summary sentence and in new
+  `split_*` columns (`planning.median_split_summary`). New closed forms:
+  `closed_form.median_split_median_survival`, `median_split_expected_ci`;
+  `simulate_continuous_vs_dichotomized` also returns `group_hr_ci_low/high` and
+  `events_high/low`.
 
 ### Deprecated
 - `survpower.report`, the `survpower report` subcommand and

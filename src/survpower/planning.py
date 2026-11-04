@@ -36,6 +36,9 @@ from .closed_form import (
     detectable_hr_continuous_cph,
     dichotomized_power,
     dichotomized_sample_size,
+    group_hr_from_persd_hr,
+    median_split_expected_ci,
+    median_split_median_survival,
     theoretical_power_with_r2,
 )
 from .concordance import (
@@ -57,6 +60,49 @@ from .simulate import simulate_continuous_vs_dichotomized, simulate_power_design
 #: Below this many evaluable patients the U-statistic SE of C is anti-
 #: conservative (Appendix B, Table 9).
 MIN_N_FOR_C_TESTS = 60
+
+
+def median_split_summary(design: StudyDesign, n_eval: int, hr_per_sd: float, censor_rate: float,
+                         seed: int, sim: dict | None = None) -> dict:
+    """What a median-split (high vs low biomarker) analysis of an unadjusted
+    design gives at this N and per-SD HR: power, the fitted high-vs-low HR with
+    the 95% CI a typical trial reports, the optimistic plug-in HR, expected
+    events and model-based median OS per group. Simulated on the same kind of
+    cohorts with the fast engine (pass `sim` to reuse a run), Schoenfeld closed
+    form otherwise."""
+    plugin = group_hr_from_persd_hr(hr_per_sd)
+    med_low, med_high = median_split_median_survival(hr_per_sd, design.lambda0)
+    if design.engine == "fast":
+        r = sim or simulate_continuous_vs_dichotomized(
+            n=n_eval, hr=hr_per_sd, censor_rate=censor_rate, lambda0=design.lambda0,
+            n_sims=design.n_sims, alpha=design.alpha, seed=seed, sides=design.sides)
+        out = dict(split_power=r["power_dich"], split_hr=r["group_hr_fitted"],
+                   split_hr_ci_low=r["group_hr_ci_low"], split_hr_ci_high=r["group_hr_ci_high"],
+                   split_events_high=r["events_high"], split_events_low=r["events_low"],
+                   split_source="simulated")
+    else:
+        lo, hi, d_low, d_high = median_split_expected_ci(n_eval, hr_per_sd, censor_rate)
+        out = dict(split_power=round(dichotomized_power(n_eval, hr_per_sd, censor_rate, design.alpha,
+                                                        design.sides, method="schoenfeld"), 3),
+                   split_hr=round(plugin, 3), split_hr_ci_low=round(lo, 3),
+                   split_hr_ci_high=round(hi, 3), split_events_high=round(d_high, 1),
+                   split_events_low=round(d_low, 1), split_source="closed form")
+    out.update(split_hr_plugin=round(plugin, 3), split_median_os_high=round(med_high, 1),
+               split_median_os_low=round(med_low, 1))
+    return out
+
+
+def median_split_text(ms: dict) -> str:
+    """The median-split clause of a summary: '... would have X% power; ...'."""
+    simulated = ms["split_source"] == "simulated"
+    hr_txt = (f"a high-vs-low HR of {ms['split_hr']:.2f} (typical 95% CI "
+              f"{ms['split_hr_ci_low']:.2f} to {ms['split_hr_ci_high']:.2f}"
+              + (f"; plug-in HR per SD^1.596 = {ms['split_hr_plugin']:.2f})" if simulated
+                 else "; plug-in HR per SD^1.596, Schoenfeld closed form)"))
+    return (f"{ms['split_power']:.0%} power and would estimate {hr_txt}, with "
+            f"~{ms['split_events_high']:.0f} vs ~{ms['split_events_low']:.0f} events and median "
+            f"OS {ms['split_median_os_high']:.1f} vs {ms['split_median_os_low']:.1f} months in "
+            f"the high vs low group")
 
 
 def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
@@ -92,6 +138,9 @@ def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
             univariate = design.n_covariates == 0
             dich = {m: (dichotomized_power(n_eval, hr_sd, cr, design.alpha, design.sides, method=m)
                         if univariate else np.nan) for m in ("freedman", "schoenfeld")}
+            split = (median_split_summary(design, n_eval, hr_sd, cr, seed,
+                                          sim=r if univariate_fast else None)
+                     if univariate else {})
             rows.append(dict(
                 n_enrolled=n, n_evaluable=n_eval, hr=round(hr, 4), hr_per_sd=round(hr_sd, 4),
                 c_index=round(c_of_beta(np.log(hr_sd)), 4),
@@ -109,10 +158,9 @@ def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
                     f"(95% simulation CI {lo:.0%} to {hi:.0%}) to detect a hazard ratio of "
                     f"{design.hr_label(hr_sd)}{design.adjustment_label()}."
                     + (f" A median-split analysis of the same cohorts would have "
-                       f"{dich_sim:.0%} power." if np.isfinite(dich_sim) else
-                       f" A median-split analysis would have ~{dich['schoenfeld']:.0%} power "
-                       f"(Schoenfeld closed form)." if univariate else "")
+                       f"{median_split_text(split)}." if univariate else "")
                 ),
+                **split,
             ))
             combo += 1
     return pd.DataFrame(rows)
@@ -138,9 +186,14 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
             )
             details.append(out)
             n_enrol = design.enrolled(out["n_calibrated"])
-            n_dich = (design.enrolled(dichotomized_sample_size(pw, hr_sd, cr, design.alpha,
-                                                               design.sides, method="schoenfeld"))
-                      if design.n_covariates == 0 else np.nan)
+            split = {}
+            n_dich = np.nan
+            if design.n_covariates == 0:
+                n_dich_eval = dichotomized_sample_size(pw, hr_sd, cr, design.alpha, design.sides,
+                                                       method="schoenfeld")
+                n_dich = design.enrolled(n_dich_eval)
+                split = median_split_summary(design, n_dich_eval, hr_sd, cr,
+                                             seed=design.seed + 101 * combo + 7)
             lo, hi = out["n_ci_low"], out["n_ci_high"]
             has_ci = np.isfinite(lo)
             ci_txt = (f"; 95% Monte Carlo interval {int(lo)}-{int(hi)} evaluable" if has_ci else "")
@@ -170,9 +223,11 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
                     + (" The interval contains the closed-form N, so the calibration does not "
                        "resolve a difference from it; increase --n-sims-grid to do so."
                        if unresolved else "")
-                    + (f" A median-split analysis would need ~{n_dich} enrolled."
+                    + (f" A median-split analysis would need ~{n_dich} enrolled (Schoenfeld "
+                       f"closed form); at that N it would have {median_split_text(split)}."
                        if design.n_covariates == 0 else "")
                 ),
+                **split,
             ))
             combo += 1
     return pd.DataFrame(rows), details
@@ -268,6 +323,12 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
                     f"{ci_txt}; simulation-confirmed power {out['confirmed_power']:.0%}."
                 ),
             )
+            if design.n_covariates == 0:
+                split = median_split_summary(design, n_eval, hr_sd, cr,
+                                             seed=design.seed + 101 * combo + 7)
+                row["summary"] += (f" At this N and HR, a median-split analysis would have "
+                                   f"{median_split_text(split)}.")
+                row.update(split)
             rows.append(row)
             combo += 1
     return pd.DataFrame(rows)

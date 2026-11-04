@@ -5,6 +5,8 @@ from survpower.closed_form import (
     detectable_hr_continuous_cph,
     dichotomized_power,
     group_hr_from_persd_hr,
+    median_split_expected_ci,
+    median_split_median_survival,
     sample_size_continuous_cph,
     solve_p_con,
     theoretical_power_with_r2,
@@ -51,3 +53,22 @@ def test_solve_p_con_pooled_probability():
     p_exp = 1 - (1 - p_con) ** ghr
     assert 0.5 * (p_con + p_exp) == pytest.approx(0.8)
     assert p_exp > p_con
+
+
+def test_median_split_median_survival():
+    lam0 = np.log(2) / 15
+    assert median_split_median_survival(1.0, lam0) == pytest.approx((15.0, 15.0), rel=1e-8)
+    low, high = median_split_median_survival(1.3, lam0)
+    assert high < 15 < low
+    # check S_high(median) = 1/2 by Monte Carlo
+    x = np.random.default_rng(0).standard_normal(2_000_000)
+    x = x[x > 0]
+    assert np.mean(np.exp(-lam0 * 1.3 ** x * high)) == pytest.approx(0.5, abs=1e-3)
+
+
+def test_median_split_expected_ci():
+    lo, hi, d_low, d_high = median_split_expected_ci(200, 1.3, 0.2)
+    ghr = group_hr_from_persd_hr(1.3)
+    assert d_low + d_high == pytest.approx(160)
+    assert np.sqrt(lo * hi) == pytest.approx(ghr)  # symmetric on the log scale
+    assert np.log(hi / lo) == pytest.approx(2 * 1.96 * np.sqrt(1 / d_low + 1 / d_high), rel=1e-3)

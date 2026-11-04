@@ -191,13 +191,14 @@ def simulate_continuous_vs_dichotomized(
     """Continuous and median-dichotomized Cox analyses on the *same*
     simulated cohorts (report Table 1). The dichotomized fit uses
     G = 1{X > median(X)}; its mean coefficient gives the fitted group HR, to
-    compare with the plug-in HR ** 1.5958. Uses the fast engine (identical
+    compare with the plug-in HR ** 1.5958, with the 95% CI a typical trial
+    reports and the expected events per group. Uses the fast engine (identical
     continuous decisions to `simulate_power` with the same seed)."""
     beta = np.log(hr)
     lam_c = calibrate_censoring_rate(beta, censor_rate, lambda0=lambda0, seed=seed + 999)
     rng = np.random.default_rng(seed)
     rej_cont = rej_dich = 0
-    events, bg, bc = [], [], []
+    events, bg, bc, se_gs, ev_high = [], [], [], [], []
     for _ in tqdm(range(n_sims), desc=f"cont vs dich n={n}", leave=False):
         X = rng.standard_normal(n)
         T = rng.exponential(scale=1.0 / (lambda0 * np.exp(beta * X)))
@@ -208,7 +209,8 @@ def simulate_continuous_vs_dichotomized(
         G = (X > np.median(X)).astype(float)
         bg_hat, se_g = cox_fit_1d(time_, event, G)
         rej_dich += wald_rejects(bg_hat / se_g, beta, alpha, sides)
-        bg.append(bg_hat); bc.append(b)
+        bg.append(bg_hat); bc.append(b); se_gs.append(se_g)
+        ev_high.append(event[G == 1].sum())
     return dict(
         n=n, hr=hr, n_sims=n_sims, mean_events=round(float(np.mean(events)), 1),
         power_cont=round(rej_cont / n_sims, 3), power_dich=round(rej_dich / n_sims, 3),
@@ -216,6 +218,11 @@ def simulate_continuous_vs_dichotomized(
         power_cont_mcse=_r4(proportion_mcse(rej_cont / n_sims, n_sims)),
         power_dich_mcse=_r4(proportion_mcse(rej_dich / n_sims, n_sims)),
         group_hr_fitted_mcse=_r4(exp_mean_mcse(bg)),
+        # the 95% Wald CI a typical trial reports: mean log-HR +/- 1.96 * mean SE
+        group_hr_ci_low=round(float(np.exp(np.nanmean(bg) - 1.96 * np.nanmean(se_gs))), 3),
+        group_hr_ci_high=round(float(np.exp(np.nanmean(bg) + 1.96 * np.nanmean(se_gs))), 3),
+        events_high=round(float(np.mean(ev_high)), 1),
+        events_low=round(float(np.mean(events) - np.mean(ev_high)), 1),
         n_failed=int(np.sum(~np.isfinite(bc))),
     )
 

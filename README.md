@@ -19,9 +19,13 @@ the protocol.
 $ survpower --c-index 0.55 0.60 0.70
 ...
   - To detect a hazard ratio of 1.2 per SD of the biomarker (concordance 0.550) with 80%
-    power (two-sided Wald test at alpha = 0.05), about 250 events are required (20% censored):
-    N = 312 evaluable / 312 enrolled patients (simulation-confirmed power 81%;
-    closed-form N = 306 enrolled). A median-split analysis would need ~488 enrolled.
+    power (two-sided Wald test at alpha = 0.05), about 258 events are required (20%
+    censored): N = 322 evaluable / 322 enrolled patients (simulation-calibrated; 95% Monte
+    Carlo interval 313-332 evaluable; confirmed power 81%; closed-form N = 306 enrolled).
+    A median-split analysis would need ~482 enrolled (Schoenfeld closed form); at that N
+    it would have 80% power and would estimate a high-vs-low HR of 1.33 (typical 95% CI
+    1.09 to 1.63; plug-in HR per SD^1.596 = 1.33), with ~198 vs ~187 events and median OS
+    13.0 vs 17.3 months in the high vs low group.
 ```
 
 ## Install

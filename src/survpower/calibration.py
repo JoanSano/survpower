@@ -71,6 +71,7 @@ def calibrate_sample_size(
     min_n: int = 10,
     scan_below: int = 100,
     scan_points: int = 9,
+    scan_if_flat: bool = False,
 ) -> dict:
     """Generic simulation calibration of N for any power function.
 
@@ -78,9 +79,11 @@ def calibrate_sample_size(
     2. Simulated power at each point; WLS fit of Phi^-1(power) = a sqrt(N) + b.
     3. Invert for the target, with a 95% parametric-bootstrap interval for N*
        (`n_ci_low`, `n_ci_high`); confirm with `confirm_n_sims` replicates.
-    4. If the calibrated N < `scan_below`, replace steps 3-4 by a direct scan
+    4. If the calibrated N < `scan_below` (or, with `scan_if_flat`, the
+       probit slope is not positive), replace steps 3-4 by a direct scan
        of `scan_points` integers in [0.7 N*, 1.5 N*] at `confirm_n_sims`
-       replicates each, keeping the smallest N reaching the target.
+       replicates each, keeping the smallest N reaching the target (N* is
+       the closed-form N0 when the slope is not positive).
 
     A calibrated N* whose interval contains the closed-form N0 has not
     resolved a difference from it: increase `n_sims_per_point`.
@@ -105,7 +108,8 @@ def calibrate_sample_size(
             n_star = int(np.ceil(((norm.ppf(target_power) - b_hat) / a_hat) ** 2))
         else:
             warnings.warn(f"simulated power does not increase over the N grid {n_grid}; "
-                          "falling back to the closed-form N. Increase n_sims.")
+                          + ("scanning around the closed-form N." if scan_if_flat else
+                             "falling back to the closed-form N. Increase n_sims."))
             n_star = int(n0)
     n_star = max(n_star, min_n)
 
@@ -116,7 +120,8 @@ def calibrate_sample_size(
         ci = (float(np.ceil(lo_)), float(np.ceil(hi_)))
     out = dict(n0=int(n0), n_calibrated=n_star, a_hat=round(a_hat, 5), b_hat=round(b_hat, 5),
                n_ci_low=ci[0], n_ci_high=ci[1], grid=grid, method="probit")
-    if n_star < scan_below:
+    flat = len(n_grid) >= 2 and not a_hat > 0
+    if n_star < scan_below or (scan_if_flat and flat):
         lo, hi = max(min_n, int(np.floor(0.7 * n_star))), int(np.ceil(1.5 * n_star))
         candidates = sorted({int(round(v)) for v in np.linspace(lo, hi, scan_points)})
         scan = []
@@ -153,6 +158,7 @@ def estimate_required_n_by_simulation(
     sides: int = 2,
     engine: str = "fast",
     scan_below: int = 100,
+    scan_if_flat: bool = False,
 ) -> dict:
     """Required N for a continuous covariate (optionally adjusted for p
     covariates at multiple correlation r2_target): closed form, then
@@ -171,6 +177,7 @@ def estimate_required_n_by_simulation(
     out = calibrate_sample_size(
         power_fn, N0, target_power, n_grid=n_grid, n_sims_per_point=n_sims_per_point,
         confirm_n_sims=confirm_n_sims, seed=seed, min_n=10, scan_below=scan_below,
+        scan_if_flat=scan_if_flat,
     )
     return dict(
         hr=hr, target_power=target_power,

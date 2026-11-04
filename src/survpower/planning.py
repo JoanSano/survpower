@@ -4,7 +4,8 @@ Power, N and the effect size are linked -- fix any two (plus alpha) and the
 third follows:
 
     effect + N  -> power                  `run_power_mode`
-    effect      -> required events and N  `run_sample_size_mode`
+    effect      -> required events and N  `sample_size` (HR or C-index),
+                                          `run_sample_size_mode` (tables)
     N           -> minimum detectable HR  `run_detectable_effect_mode`
 
 The effect is a per-SD hazard ratio (or per raw unit with `biomarker_sd`);
@@ -22,6 +23,8 @@ Every row carries a `summary` sentence ready for protocol / grant text.
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass, field
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -39,6 +42,7 @@ from .closed_form import (
     group_hr_from_persd_hr,
     median_split_expected_ci,
     median_split_median_survival,
+    sample_size_continuous_cph,
     theoretical_power_with_r2,
 )
 from .concordance import (
@@ -46,6 +50,7 @@ from .concordance import (
     benchmark_sample_size,
     beta_of_c,
     c_of_beta,
+    hr_of_c,
     concordance_limit,
     default_uno_tau,
     precision_half_width,
@@ -54,7 +59,7 @@ from .concordance import (
     simulate_cindex_power,
 )
 from .design import StudyDesign
-from .results import proportion_mcse
+from .results import Estimate, proportion_mcse
 from .simulate import simulate_continuous_vs_dichotomized, simulate_power_design
 
 #: Below this many evaluable patients the U-statistic SE of C is anti-
@@ -168,6 +173,138 @@ def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+SAMPLE_SIZE_METHODS = ("auto", "closed_form", "calibrated", "robbins_monro")
+
+
+@dataclass(frozen=True)
+class SampleSizeResult:
+    """Output of `sample_size`.
+
+    n_evaluable, n_enrolled : the required N (enrolled = evaluable inflated for
+                              `design.non_evaluable`)
+    events                  : expected events at that N (closed form: required D)
+    method                  : what produced N: "closed_form", "probit" (simulation-
+                              calibrated) or "scan" (direct integer scan)
+    n_closed_form           : the closed-form N (evaluable), for comparison
+    n_ci                    : 95% Monte Carlo interval of N (probit calibration only)
+    confirmed_power         : simulated power at N with its MCSE (simulation methods)
+    hr_per_sd, c_index      : the effect, on both scales
+    details                 : the calibration dict (grid, fit, scan) for plotting
+    """
+
+    n_evaluable: int
+    n_enrolled: int
+    events: float
+    method: str
+    n_closed_form: int
+    events_closed_form: float
+    n_ci: tuple | None
+    confirmed_power: Estimate | None
+    hr_per_sd: float
+    c_index: float
+    target_power: float
+    censor_rate: float
+    summary: str
+    details: dict = field(default_factory=dict, repr=False)
+
+
+def sample_size(
+    hr: float | None = None,
+    c_index: float | None = None,
+    power: float = 0.80,
+    design: StudyDesign | None = None,
+    method: Literal["auto", "closed_form", "calibrated", "robbins_monro"] = "auto",
+    seed: int | None = None,
+) -> SampleSizeResult:
+    """Required sample size for a continuous biomarker, given its hazard ratio
+    or its concordance.
+
+    hr       : hazard ratio on the user's scale (per SD, or per raw unit with
+               `design.biomarker_sd`); exactly one of `hr` / `c_index`.
+    c_index  : the *population* concordance of the biomarker, Gonen & Heller's
+               K(beta) (eq. 25), converted with `concordance.hr_of_c`. It is not
+               the censoring-dependent limit of Harrell's C: ``c_index=0.70`` means
+               "the population concordance is 0.70".
+    power    : target power.
+    design   : `StudyDesign` (default `StudyDesign()`): alpha, sides, censoring
+               or accrual calendar, non-evaluable fraction, adjustment R^2, engine
+               and replicate counts.
+    method   : "closed_form"  Hsieh & Lavori (2000), report Eq. 16:
+                              D = (z_{1-alpha/sides} + z_power)^2 / (beta^2 (1 - R^2)),
+                              N = ceil(D / P(event)). Optimistic at large effects.
+               "calibrated"   simulation calibration on the probit scale
+                              (`calibration.calibrate_sample_size`), no scan.
+               "auto"         "calibrated", replaced by a direct integer scan when
+                              the calibrated N is below 100 or the probit slope is not
+                              positive. Recommended.
+               "robbins_monro" not available yet (#24).
+    seed     : simulation seed (default `design.seed`).
+
+    At large effects the closed form fails: for ``c_index=0.70`` it gives
+    N = 14, where the simulated power is only about 0.6; "auto" finds N ~ 22.
+    """
+    if (hr is None) == (c_index is None):
+        raise ValueError("give exactly one of hr or c_index")
+    if method not in SAMPLE_SIZE_METHODS:
+        raise ValueError(f"method must be one of {SAMPLE_SIZE_METHODS}")
+    if method == "robbins_monro":
+        raise NotImplementedError("method='robbins_monro' is planned (#24); use 'auto'")
+    design = design if design is not None else StudyDesign()
+    seed = design.seed if seed is None else seed
+    hr_sd = hr_of_c(c_index) if c_index is not None else design.to_per_sd(hr)
+    c = c_of_beta(np.log(hr_sd))
+    cr = design.censor_rate_for(hr_sd)
+
+    if method == "closed_form":
+        D, n0 = sample_size_continuous_cph(hr_sd, power, alpha=design.alpha, event_prob=1 - cr,
+                                           rho_sq=design.r2_eff, sides=design.sides)
+        n_enrol = design.enrolled(n0)
+        summary = (f"To detect a hazard ratio of {design.hr_label(hr_sd)} with {power:.0%} power "
+                   f"({design.test_label()}{design.adjustment_label()}), {np.ceil(D):.0f} events "
+                   f"are required ({cr:.0%} censored): N = {n0} evaluable / {n_enrol} enrolled "
+                   f"patients (closed form, Hsieh & Lavori 2000; optimistic at large effects).")
+        return SampleSizeResult(
+            n_evaluable=n0, n_enrolled=n_enrol, events=round(D, 1), method="closed_form",
+            n_closed_form=n0, events_closed_form=round(D, 1), n_ci=None, confirmed_power=None,
+            hr_per_sd=hr_sd, c_index=c, target_power=power, censor_rate=cr, summary=summary,
+            details=dict(events_closed_form=D, n_closed_form=n0))
+
+    auto = method == "auto"
+    out = estimate_required_n_by_simulation(
+        hr=hr_sd, target_power=power, censor_rate=cr, lambda0=design.lambda0,
+        alpha=design.alpha, n_sims_per_point=design.n_sims_grid,
+        confirm_n_sims=design.n_sims, seed=seed,
+        p=design.n_covariates, r2_target=design.r2, sides=design.sides,
+        engine=design.engine, scan_below=100 if auto else 0, scan_if_flat=auto,
+    )
+    n_enrol = design.enrolled(out["n_calibrated"])
+    lo, hi = out["n_ci_low"], out["n_ci_high"]
+    has_ci = bool(np.isfinite(lo))
+    ci_txt = (f"; 95% Monte Carlo interval {int(lo)}-{int(hi)} evaluable" if has_ci else "")
+    unresolved = has_ci and lo <= out["n_closed_form"] <= hi
+    summary = (
+        f"To detect a hazard ratio of {design.hr_label(hr_sd)} with {power:.0%} power "
+        f"({design.test_label()}{design.adjustment_label()}), about "
+        f"{out['confirmed_mean_events']:.0f} events are required ({cr:.0%} censored): "
+        f"N = {out['n_calibrated']} evaluable / {n_enrol} enrolled patients "
+        f"(simulation-calibrated{ci_txt}; confirmed power "
+        f"{out['confirmed_power']:.0%}; closed-form N = "
+        f"{design.enrolled(out['n_closed_form'])} enrolled)."
+        + (" The interval contains the closed-form N, so the calibration does not "
+           "resolve a difference from it; increase --n-sims-grid to do so."
+           if unresolved else "")
+    )
+    return SampleSizeResult(
+        n_evaluable=out["n_calibrated"], n_enrolled=n_enrol,
+        events=out["confirmed_mean_events"], method=out["method"],
+        n_closed_form=out["n_closed_form"], events_closed_form=out["events_closed_form"],
+        n_ci=(lo, hi) if has_ci else None,
+        confirmed_power=Estimate(out["confirmed_power"],
+                                 round(proportion_mcse(out["confirmed_power"], design.n_sims), 4)),
+        hr_per_sd=hr_sd, c_index=c, target_power=power, censor_rate=cr, summary=summary,
+        details=out)
+
+
 def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[pd.DataFrame, list]:
     """Effect only: required events and N per (HR, target power) -- closed
     form and simulation-calibrated -- inflated for non-evaluable patients,
@@ -179,15 +316,11 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
         hr_sd = design.to_per_sd(hr)
         cr = design.censor_rate_for(hr_sd)
         for pw in powers:
-            out = estimate_required_n_by_simulation(
-                hr=hr_sd, target_power=pw, censor_rate=cr, lambda0=design.lambda0,
-                alpha=design.alpha, n_sims_per_point=design.n_sims_grid,
-                confirm_n_sims=design.n_sims, seed=design.seed + 101 * combo,
-                p=design.n_covariates, r2_target=design.r2, sides=design.sides,
-                engine=design.engine,
-            )
+            res = sample_size(hr=hr, power=pw, design=design, method="auto",
+                              seed=design.seed + 101 * combo)
+            out = res.details
             details.append(out)
-            n_enrol = design.enrolled(out["n_calibrated"])
+            n_enrol = res.n_enrolled
             split = {}
             n_dich = np.nan
             if design.n_covariates == 0:
@@ -197,9 +330,6 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
                 split = median_split_summary(design, n_dich_eval, hr_sd, cr,
                                              seed=design.seed + 101 * combo + 7)
             lo, hi = out["n_ci_low"], out["n_ci_high"]
-            has_ci = np.isfinite(lo)
-            ci_txt = (f"; 95% Monte Carlo interval {int(lo)}-{int(hi)} evaluable" if has_ci else "")
-            unresolved = has_ci and lo <= out["n_closed_form"] <= hi
             rows.append(dict(
                 hr=round(hr, 4), hr_per_sd=round(hr_sd, 4), c_index=round(c_of_beta(np.log(hr_sd)), 4),
                 target_power=pw, censor_rate=round(cr, 3),
@@ -215,16 +345,7 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
                 calibration=out["method"],
                 n_dichotomized_enrolled=n_dich,
                 summary=(
-                    f"To detect a hazard ratio of {design.hr_label(hr_sd)} with {pw:.0%} power "
-                    f"({design.test_label()}{design.adjustment_label()}), about "
-                    f"{out['confirmed_mean_events']:.0f} events are required ({cr:.0%} censored): "
-                    f"N = {out['n_calibrated']} evaluable / {n_enrol} enrolled patients "
-                    f"(simulation-calibrated{ci_txt}; confirmed power "
-                    f"{out['confirmed_power']:.0%}; closed-form N = "
-                    f"{design.enrolled(out['n_closed_form'])} enrolled)."
-                    + (" The interval contains the closed-form N, so the calibration does not "
-                       "resolve a difference from it; increase --n-sims-grid to do so."
-                       if unresolved else "")
+                    res.summary
                     + (f" A median-split analysis would need ~{n_dich} enrolled (Schoenfeld "
                        f"closed form); at that N it would have {median_split_text(split)}."
                        if design.n_covariates == 0 else "")

@@ -56,6 +56,29 @@ column, so you can see the effect on both scales.
     design assuming C = 0.70 are different hypotheses, not two phrasings of one.
     Pre-register one of them.
 
+### In Python: `sample_size(c_index=...)`
+
+`sample_size` takes either effect and converts a concordance with `hr_of_c`:
+
+```python
+from survpower import sample_size
+sample_size(c_index=0.70, method="closed_form").n_evaluable   # 14
+sample_size(c_index=0.70).n_evaluable                          # ~21 ("auto")
+```
+
+`c_index` is the **population** concordance \(K(\beta)\) above (Gönen–Heller),
+not the limit of Harrell's C, which depends on censoring. So `c_index=0.70` means
+"the population concordance is 0.70". To plan a test against a benchmark C₀
+with a specific estimator, use `run_cindex_benchmark_mode`.
+
+!!! warning "The closed form fails at large effects"
+    The closed form treats \(\hat\beta\) as normal with its asymptotic
+    variance. That holds when there are many events, not at a dozen. For
+    C = 0.70 it gives N = 14 (11 events). The simulated power at N = 14 is
+    about 0.55–0.64, not 0.80. `method="auto"` (the default) calibrates by
+    simulation and, below 100 patients, scans N directly. It finds N ≈ 21–22.
+    The last column of the table above shows the same gap at C ≥ 0.60.
+
 ## Skewed biomarkers
 
 The mapping assumes \(X\) is normal. For skewed biomarkers (volumes, densities),

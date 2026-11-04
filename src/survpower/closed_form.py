@@ -35,17 +35,28 @@ def sample_size_continuous_cph(
     event_prob: float = 0.80,
     rho_sq: float = 0.0,
     sides: int = 2,
+    *,
+    var_x: float | None = None,
 ) -> tuple[float, int]:
-    """Required events D and sample size N for a continuous Cox covariate.
+    """Required events D and sample size N for a continuous Cox covariate
+    (Hsieh & Lavori 2000; revised report Eq. 16):
+
+        D = (z_{1-alpha/sides} + z_{power})^2 / (beta^2 var_x (1 - R^2)),
+        N = ceil(D / event_prob).
 
     hr         : per-unit (per-SD if sigma_x = 1) hazard ratio
     power      : target power
+    sigma_x    : SD of the covariate; or give its variance as `var_x`
     event_prob : expected marginal probability of an observed event
     rho_sq     : R^2 of X on the other covariates (0 for a univariate model)
     sides      : 2 (two-sided) or 1 (one-sided) test
 
     Returns (D, N).
     """
+    if var_x is not None:
+        if sigma_x != 1.0:
+            raise ValueError("give sigma_x or var_x, not both")
+        sigma_x = float(np.sqrt(var_x))
     beta = np.log(hr)
     za, zb = norm.ppf(1 - alpha / sides), norm.ppf(power)
     D = (za + zb) ** 2 / (beta ** 2 * sigma_x ** 2 * (1 - rho_sq))

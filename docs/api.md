@@ -29,7 +29,8 @@ re-exported from the top-level package (`from survpower import ...`).
 
 ::: survpower.planning
     options:
-      members: [run_power_mode, run_sample_size_mode, run_detectable_effect_mode,
+      members: [sample_size, SampleSizeResult, run_power_mode, run_sample_size_mode,
+                run_detectable_effect_mode,
                 run_cindex_benchmark_mode, run_cindex_precision_mode]
 
 ## Concordance
@@ -93,6 +94,9 @@ The same seed gives the same result within one installed version.
 ## Monte Carlo performance measures
 
 ::: survpower.results
+    options:
+      members: [Estimate, proportion_mcse, mean_mcse, sd_mcse, exp_mean_mcse,
+                summarize_replicates]
 
 ## Censoring
 

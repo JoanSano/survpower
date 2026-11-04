@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .baseline import DEFAULT_LAMBDA0
+from .baseline import DEFAULT_LAMBDA0, DEFAULT_MEDIAN_OS_MONTHS, median_os_to_lambda0
 from .dgp import gen_adjustment_covariates, gen_crossing, gen_exponential_ph, gen_waning
 
 
@@ -106,7 +106,8 @@ def censor_rate_from_design(
     The simulation engines then use exponential censoring calibrated to this
     rate. Cox power is driven almost entirely by the number of events, so
     matching the event probability is what matters; the exact shape of the
-    censoring distribution is second order.
+    censoring distribution is second order. In closed form this
+    rate is 1 - `event_probability_exponential`.
     """
     rng = np.random.default_rng(seed)
     T, _ = gen_exponential_ph(n_probe, np.log(hr), lambda0, rng)
@@ -115,3 +116,40 @@ def censor_rate_from_design(
         lam_d = -np.log(1 - dropout_annual) / 12.0
         C = np.minimum(C, rng.exponential(scale=1.0 / lam_d, size=n_probe))
     return float(np.mean(C < T))
+
+
+def event_probability_exponential(
+    accrual_months: float,
+    followup_months: float,
+    dropout_annual: float = 0.0,
+    median_os: float = DEFAULT_MEDIAN_OS_MONTHS,
+    hr_per_sd: float = 1.0,
+    n_nodes: int = 64,
+) -> float:
+    """P(event) under exponential survival, uniform accrual, exponential dropout;
+    marginalized over X ~ N(0, 1) by Gauss-Hermite quadrature.
+
+    Closed-form counterpart of ``1 - censor_rate_from_design(...)`` (same
+    calendar and dropout parametrization). For a single hazard lambda with
+    dropout hazard delta = -ln(1 - dropout_annual) / 12 and r = lambda + delta,
+
+        P(event | lambda) = (lambda / r) [1 - (e^{-rF} - e^{-r(A+F)}) / (rA)],
+
+    with the A -> 0 limit (lambda / r)(1 - e^{-rF}); this is Lachin & Foulkes
+    (1986, eq. 4.1) with R = A and T = A + F. The subject hazard is
+    lambda0 * hr_per_sd ** X.
+    """
+    A, F = float(accrual_months), float(followup_months)
+    if A < 0 or F < 0 or A + F <= 0:
+        raise ValueError("need accrual_months >= 0, followup_months >= 0 and A + F > 0")
+    if not 0 <= dropout_annual < 1:
+        raise ValueError("dropout_annual must be in [0, 1)")
+    delta = -np.log1p(-dropout_annual) / 12.0
+    x, w = np.polynomial.hermite_e.hermegauss(n_nodes)  # weight exp(-x^2 / 2)
+    lam = median_os_to_lambda0(median_os) * np.exp(np.log(hr_per_sd) * x)
+    r = lam + delta
+    # (e^{-rF} - e^{-r(A+F)}) / (rA) = e^{-rF} (1 - e^{-rA}) / (rA) -> e^{-rF} as A -> 0
+    rA = r * A
+    window = np.ones_like(rA) if A == 0 else -np.expm1(-rA) / rA
+    p = lam / r * (1.0 - np.exp(-r * F) * window)
+    return float(w @ p / np.sqrt(2 * np.pi))

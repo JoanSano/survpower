@@ -17,6 +17,15 @@
 - `survpower.concordance.mapping_table(levels, censor_rate, design=None)`: the
   C ↔ per-SD HR table (report Table 8) with calibrated censoring, the Harrell limit
   and closed-form events / N, moved out of `survpower.report` (#8).
+- `survpower.censoring.event_probability_exponential`: closed-form P(event) for the
+  accrual calendar (uniform entry, exponential survival and dropout), marginalized
+  over the biomarker by Gauss-Hermite quadrature. Tested against the Monte Carlo
+  `censor_rate_from_design` and against Lachin & Foulkes (1986), Section 2 and
+  Table 2 (#4).
+- Docs: the censoring page derives the event probability, shows how accrual and
+  follow-up trade off (contour plot and table) and cross-checks Lachin & Foulkes.
+  The worked example now reads 31.5%. Doc figures are drawn at build time by
+  `scripts/docs_figures.py` (an MkDocs hook; MkDocs >= 1.6) (#4).
 - `simulate_power(..., details=True)` and `simulate_power_design(..., details=True)`
   return the full dict. The default tuple return is unchanged.
 

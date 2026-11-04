@@ -9,6 +9,10 @@ repo_name: JoanSano/survpower
 exclude_docs: |
   dev/
 
+# figures are drawn at build time from the package, not committed
+hooks:
+  - scripts/docs_figures.py
+
 theme:
   name: material
   features:

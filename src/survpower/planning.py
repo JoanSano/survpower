@@ -174,6 +174,11 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
     return pd.DataFrame(rows), details
 
 
+#: Simulation searches for the detectable HR under an accrual design, each at
+#: the censoring of the previous search's HR (the first at the closed-form one).
+MAX_DETECTABLE_RUNS = 3
+
+
 def detectable_censor_rate(design: StudyDesign, n_eval: int, power: float,
                            tol: float = 1e-3, max_iter: int = 10) -> float:
     """Censoring rate at the (unknown) detectable HR. An accrual design's
@@ -202,13 +207,22 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
         n_eval = design.evaluable(n)
         for pw in powers:
             cr = detectable_censor_rate(design, n_eval, pw)
-            out = estimate_detectable_hr_by_simulation(
-                n=n_eval, target_power=pw, censor_rate=cr, lambda0=design.lambda0,
-                alpha=design.alpha, p=design.n_covariates, r2_target=design.r2,
-                sides=design.sides, n_sims_per_point=design.n_sims_grid,
-                confirm_n_sims=design.n_sims, seed=design.seed + 101 * combo,
-                engine=design.engine,
-            )
+            for run in range(MAX_DETECTABLE_RUNS):
+                out = estimate_detectable_hr_by_simulation(
+                    n=n_eval, target_power=pw, censor_rate=cr, lambda0=design.lambda0,
+                    alpha=design.alpha, p=design.n_covariates, r2_target=design.r2,
+                    sides=design.sides, n_sims_per_point=design.n_sims_grid,
+                    confirm_n_sims=design.n_sims, seed=design.seed + 101 * combo,
+                    engine=design.engine,
+                )
+                if design.accrual_months is None:
+                    break
+                # the simulated HR differs slightly from the closed-form one the censoring
+                # was taken at: re-run at the censoring of the simulated HR until they agree
+                cr_next = design.censor_rate_for(out["hr_calibrated"])
+                if abs(cr_next - cr) < 1e-4 or run == MAX_DETECTABLE_RUNS - 1:
+                    break
+                cr = cr_next
             hr_sd = out["hr_calibrated"]
             lo, hi = out["hr_ci_low"], out["hr_ci_high"]
             has_ci = np.isfinite(lo)

@@ -4,6 +4,7 @@ import pytest
 from survpower.censoring import censor_rate_from_design, event_probability_exponential
 from survpower.closed_form import detectable_hr_continuous_cph
 from survpower.design import StudyDesign
+from survpower import planning
 from survpower.planning import detectable_censor_rate
 
 
@@ -105,3 +106,32 @@ def test_detectable_censor_rate_is_a_fixed_point(A, F, dropout, median_os, n):
 
 def test_detectable_censor_rate_fixed_rate_ignores_hr():
     assert detectable_censor_rate(StudyDesign(censor_rate=0.3), 100, 0.8) == 0.3
+
+
+def _count_searches(monkeypatch):
+    calls = []
+    real = planning.estimate_detectable_hr_by_simulation
+
+    def counting(**kw):
+        calls.append(kw["censor_rate"])
+        return real(**kw)
+
+    monkeypatch.setattr(planning, "estimate_detectable_hr_by_simulation", counting)
+    return calls
+
+
+def test_detectable_mode_censoring_matches_simulated_hr(monkeypatch):
+    calls = _count_searches(monkeypatch)
+    design = StudyDesign(accrual_months=18, followup_months=6, n_sims=200, n_sims_grid=200)
+    row = planning.run_detectable_effect_mode(design, [200], [0.8]).iloc[0]
+    assert 1 <= len(calls) <= planning.MAX_DETECTABLE_RUNS
+    # the censoring reported (and used in the last search) is that at the reported HR
+    assert row["censor_rate"] == pytest.approx(calls[-1], abs=5e-4)
+    assert design.censor_rate_for(row["hr_detectable_per_sd"]) == pytest.approx(calls[-1], abs=1e-3)
+
+
+def test_detectable_mode_fixed_rate_searches_once(monkeypatch):
+    calls = _count_searches(monkeypatch)
+    design = StudyDesign(censor_rate=0.3, n_sims=200, n_sims_grid=200)
+    planning.run_detectable_effect_mode(design, [200], [0.8])
+    assert calls == [0.3]

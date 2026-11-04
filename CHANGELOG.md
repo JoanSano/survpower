@@ -41,6 +41,9 @@
   HR and the design's censoring rate to a fixed point, instead of one refinement
   from HR = 1 (`planning.detectable_censor_rate`). The difference is negligible in
   typical designs and about 1 percentage point of censoring in extreme ones.
+  The simulation search is then re-run at the censoring of the simulated HR until
+  the two agree (at most three searches, `planning.MAX_DETECTABLE_RUNS`), so the
+  reported `censor_rate` is the one at the reported HR.
 - Every summary sentence states the censored fraction it used (e.g. "~97 expected
   events, 51% censored"). With an accrual design the CLI design summary no longer
   prints the fraction at HR = 1, which no result uses. The censoring page lists

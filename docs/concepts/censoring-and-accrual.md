@@ -105,9 +105,22 @@ and reports it in the summary sentence and the `censor_rate` column:
 | Minimum detectable HR (`--n`) | the detectable HR itself. It is unknown in advance, so the closed-form detectable HR and the fraction are iterated together until they agree, starting at HR = 1 |
 | Concordance questions (`--c`, `--c0`, `--precision`) | the HR implied by the target C |
 
-The simulation-calibrated detectable HR can differ slightly from the
-closed-form one where the fraction is fixed. Within that gap the fraction
-changes by about 0.1 percentage points in typical designs.
+For the minimum detectable HR this takes two steps:
+
+1. **Closed form.** Start from the fraction at HR = 1. Compute the closed-form
+   detectable HR at that fraction, then the fraction at that HR, and repeat
+   until the fraction changes by less than 0.1 percentage points. This
+   usually takes two or three rounds, because the fraction depends only weakly
+   on the HR.
+2. **Simulation.** Search for the detectable HR by simulation at that fraction.
+   The simulated HR differs slightly from the closed-form one, so the search
+   is re-run at the fraction of the simulated HR until the two agree to 0.01
+   percentage points, with at most three searches. The `censor_rate` reported
+   is the one used in the final search.
+
+For example, with 18 months accrual, 6 months follow-up and N = 200: the closed
+form settles at 51.11% (HR 1.3275); the first search finds HR 1.335, whose
+fraction is 51.09%; the re-run at 51.09% finds the same HR.
 
 A fixed `--censor-rate` does not depend on the HR. The same fraction is used at
 every HR, and \(\lambda_c\) is recalibrated to hit it.

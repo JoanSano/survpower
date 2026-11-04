@@ -146,7 +146,9 @@ def _two_sided_alpha(alpha: float, sides: int) -> float:
 def schoenfeld_two_group_power(n_exp: int, n_con: int, p_exp: float, p_con: float,
                                hr: float, alpha: float = 0.05) -> float:
     """Schoenfeld (1983) two-group power: Phi(sqrt(k m)/(1 + k) |log HR| - z),
-    with m expected events and allocation ratio k = n_exp / n_con (two-sided)."""
+    with m expected events and allocation ratio k = n_exp / n_con (two-sided).
+    This is the asymptotic power of the log-rank (Cox score) test, and to the
+    same order of the Wald test of the group coefficient."""
     k = n_exp / n_con
     m = n_exp * p_exp + n_con * p_con
     return float(norm.cdf(np.sqrt(k * m) / (1 + k) * abs(np.log(hr)) - norm.ppf(1 - alpha / 2)))

@@ -13,6 +13,15 @@
 - `simulate_power(..., details=True)` and `simulate_power_design(..., details=True)`
   return the full dict. The default tuple return is unchanged.
 
+### Changed
+- Docs: the sidebar sections (e.g. "Concepts") are collapsible on desktop and
+  start collapsed, except the section holding the current page. "Concepts" has a
+  landing page. On mobile, Material's drill-down menu is unchanged (#2).
+- Docs are published for every branch: `main` at `/survpower/main/` and each
+  branch at `/survpower/<branch>/`, with a branch selector in the header.
+  Links from before this change redirect to `main/`. `docs/dev/` is never
+  published (#2).
+
 ### Removed
 - `survpower._utils.mc_se` (unused; replaced by `survpower.results.proportion_mcse`).
 

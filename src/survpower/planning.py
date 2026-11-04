@@ -118,12 +118,13 @@ def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
             cr = design.censor_rate_for(hr_sd)
             seed = design.seed + 101 * combo
             univariate_fast = design.n_covariates == 0 and design.engine == "fast"
-            dich_sim = np.nan
+            dich_sim = dich_lr_sim = np.nan
             if univariate_fast:  # continuous and median-split fits on the same cohorts
                 r = simulate_continuous_vs_dichotomized(
                     n=n_eval, hr=hr_sd, censor_rate=cr, lambda0=design.lambda0,
                     n_sims=design.n_sims, alpha=design.alpha, seed=seed, sides=design.sides)
                 power, mean_ev, dich_sim = r["power_cont"], r["mean_events"], r["power_dich"]
+                dich_lr_sim = r["power_dich_logrank"]
             else:
                 power, mean_ev = simulate_power_design(
                     n=n_eval, hr=hr_sd, censor_rate=cr, p=design.n_covariates,
@@ -150,6 +151,7 @@ def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
                 power_ci_low=round(lo, 3), power_ci_high=round(hi, 3), n_sims=design.n_sims,
                 power_closed_form=round(closed, 3),
                 power_dichotomized_sim=round(float(dich_sim), 3),
+                power_dichotomized_logrank_sim=round(float(dich_lr_sim), 3),
                 power_dich_freedman=round(float(dich["freedman"]), 3),
                 power_dich_schoenfeld=round(float(dich["schoenfeld"]), 3),
                 summary=(

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import time
 import warnings
@@ -165,7 +166,34 @@ def build_report_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+#: The option for each `StudyDesign` field, to report its errors in CLI terms.
+DESIGN_FLAGS = {
+    "alpha": "--alpha", "sides": "--sides", "median_os": "--median-os",
+    "censor_rate": "--censor-rate", "accrual_months": "--accrual-months",
+    "followup_months": "--followup-months", "dropout_annual": "--dropout",
+    "non_evaluable": "--non-evaluable", "n_covariates": "--n-covariates", "r2": "--r2",
+    "biomarker_sd": "--biomarker-sd", "c_estimator": "--c-estimator", "c_tau": "--c-tau",
+    "engine": "--engine", "n_sims": "--n-sims", "n_sims_grid": "--n-sims-grid", "seed": "--seed",
+}
+
+
+def _build_design(parser: argparse.ArgumentParser, args: argparse.Namespace) -> StudyDesign:
+    try:
+        return StudyDesign(
+            alpha=args.alpha, sides=args.sides, median_os=args.median_os,
+            censor_rate=args.censor_rate, accrual_months=args.accrual_months,
+            followup_months=args.followup_months, dropout_annual=args.dropout,
+            non_evaluable=args.non_evaluable, n_covariates=args.n_covariates, r2=args.r2,
+            biomarker_sd=args.biomarker_sd, c_estimator=args.c_estimator, c_tau=args.c_tau,
+            engine=args.engine, n_sims=args.n_sims, n_sims_grid=args.n_sims_grid, seed=args.seed,
+        )
+    except ValueError as exc:
+        fields = r"\b(" + "|".join(DESIGN_FLAGS) + r")\b"
+        parser.error(re.sub(fields, lambda m: DESIGN_FLAGS[m.group(1)], str(exc)))
+
+
+def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> StudyDesign:
+    """Check what `StudyDesign` cannot (the effect, N and power) and return the design."""
     effect = args.hr or args.c_index
     if not effect and not args.n:
         parser.error("give --hr or --c-index, --n, or both")
@@ -190,32 +218,14 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
                      "model, power the adjusted HR (--hr with --n-covariates/--r2) instead")
     if args.n and any(n < 10 for n in args.n):
         parser.error("--n values must be at least 10")
-    if not 0 < args.alpha < 0.5:
-        parser.error("--alpha must be in (0, 0.5)")
+    design = _build_design(parser, args)
     if args.power and any(not args.alpha < p < 1 for p in args.power):
         parser.error("--power values must be in (alpha, 1)")
-    if (args.accrual_months is None) != (args.followup_months is None):
-        parser.error("--accrual-months and --followup-months must be given together")
-    if args.accrual_months is not None and args.censor_rate is not None:
-        parser.error("give either --censor-rate or an accrual/follow-up design, not both")
-    if args.accrual_months is not None and (args.accrual_months < 0 or args.followup_months < 0):
-        parser.error("--accrual-months and --followup-months must be non-negative")
-    if args.dropout and args.accrual_months is None:
-        parser.error("--dropout requires --accrual-months/--followup-months "
-                     "(with --censor-rate, include dropout in the censoring rate)")
-    if args.censor_rate is not None and not 0 <= args.censor_rate < 1:
-        parser.error("--censor-rate must be in [0, 1)")
-    for name in ("dropout", "non_evaluable", "r2"):
-        if not 0 <= getattr(args, name) < 1:
-            parser.error(f"--{name.replace('_', '-')} must be in [0, 1)")
-    if args.r2 > 0 and args.n_covariates == 0:
-        parser.error("--r2 requires --n-covariates >= 1")
-    if args.biomarker_sd is not None and args.biomarker_sd <= 0:
-        parser.error("--biomarker-sd must be positive")
-    if args.n and any(np.floor(n * (1 - args.non_evaluable)) < 10 for n in args.n):
+    if args.n and any(design.evaluable(n) < 10 for n in args.n):
         parser.error("fewer than 10 evaluable patients after --non-evaluable")
     if args.power and effect and args.n and not (args.c0 or args.precision):
         print("note: --power is ignored when both the effect and --n are given (power is the output)")
+    return design
 
 
 def _print_assumptions(design: StudyDesign) -> None:
@@ -252,20 +262,11 @@ def _print_table(title: str, df: pd.DataFrame) -> None:
 def _plan(argv: list) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
-    _validate(parser, args)
     if args.quick:  # only override replicate counts left at their defaults
         for name, value in QUICK_SIMS.items():
             if getattr(args, name) == parser.get_default(name):
                 setattr(args, name, value)
-
-    design = StudyDesign(
-        alpha=args.alpha, sides=args.sides, median_os=args.median_os,
-        censor_rate=args.censor_rate, accrual_months=args.accrual_months,
-        followup_months=args.followup_months, dropout_annual=args.dropout,
-        non_evaluable=args.non_evaluable, n_covariates=args.n_covariates, r2=args.r2,
-        biomarker_sd=args.biomarker_sd, c_estimator=args.c_estimator, c_tau=args.c_tau,
-        engine=args.engine, n_sims=args.n_sims, n_sims_grid=args.n_sims_grid, seed=args.seed,
-    )
+    design = _validate(parser, args)
     powers = args.power or [0.80]
     outdir = args.outdir
     os.makedirs(outdir, exist_ok=True)

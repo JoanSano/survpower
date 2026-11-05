@@ -67,6 +67,19 @@ def test_replace_validates():
         dataclasses.replace(StudyDesign(), alpha=2)
 
 
+def test_design_is_frozen():
+    design = StudyDesign()
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        design.alpha = 2
+    assert dataclasses.replace(design, n_sims=5000).n_sims == 5000
+    assert design.n_sims == 1000
+
+
+def test_design_is_hashable_by_value():
+    assert hash(StudyDesign(seed=1)) == hash(StudyDesign(seed=1))
+    assert len({StudyDesign(seed=1), StudyDesign(seed=1), StudyDesign(seed=2)}) == 2
+
+
 @pytest.mark.parametrize("censoring, adjustment, scale, non_evaluable", itertools.product(
     [dict(), dict(censor_rate=0), dict(censor_rate=0.999),
      dict(accrual_months=0, followup_months=1), dict(dropout_annual=0.5, **ACCRUAL)],

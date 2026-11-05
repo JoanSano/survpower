@@ -17,6 +17,9 @@
 - Passing `censor_rate` together with `accrual_months` / `followup_months` to
   `StudyDesign` now raises, as `dropout_annual` without an accrual design does. Both were
   silently ignored in Python, and the CLI already rejected them (#50).
+- `StudyDesign` is now frozen, so a design stays valid after construction and is hashable.
+  Code that assigns to a field, such as `design.n_sims = 5000`, now raises
+  `FrozenInstanceError`; use `dataclasses.replace(design, n_sims=5000)` instead.
 
 ## 0.3.0 — 2026-11-04
 

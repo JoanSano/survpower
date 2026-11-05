@@ -24,13 +24,13 @@ def _is_positive(x: float) -> bool:
     return 0 < x < np.inf
 
 
-@dataclass
+@dataclass(frozen=True)
 class StudyDesign:
     """Design assumptions shared by all planning modes.
 
     Invalid values raise `ValueError` at construction, naming the field.
-    Fields changed after construction are not re-checked; use
-    `dataclasses.replace`, which is.
+    A design is immutable; to change a field, make a new, validated design
+    with `dataclasses.replace`.
 
     alpha, sides     : type I error, in (0, 0.5); one- (1) or two-sided (2)
                        Wald test.

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `StudyDesign` now raises `ValueError` at construction for invalid values, naming the
+  field. Before, the Python API accepted them, and some returned impossible answers
+  with no error: `sample_size(hr=1.3, design=StudyDesign(censor_rate=1.2),
+  method="closed_form")` gave N = -570. The rules moved here from the CLI, which reports
+  them with the same messages and exit code (#50).
+- New checks that the CLI also gains: `median_os`, `c_tau` and `biomarker_sd` must be
+  positive and finite, `n_sims` and `n_sims_grid` positive integers, and
+  `--accrual-months 0 --followup-months 0`, which used to crash with an `OverflowError`,
+  is rejected (#50).
+
+### Changed
+- Passing `censor_rate` together with `accrual_months` / `followup_months` to
+  `StudyDesign` now raises, as `dropout_annual` without an accrual design does. Both were
+  silently ignored in Python, and the CLI already rejected them (#50).
+
 ## 0.3.0 — 2026-11-04
 
 Milestone M1 (foundations): scenario engine (#9), `sample_size()` (#11) and

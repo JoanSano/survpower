@@ -4,25 +4,43 @@ size and the target power."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from numbers import Integral
 
 import numpy as np
 
 from .baseline import DEFAULT_CENSOR_RATE, DEFAULT_MEDIAN_OS_MONTHS, median_os_to_lambda0
 from .censoring import calibrate_censoring_rate, censor_rate_from_design
-from .concordance import c_of_beta
+from .concordance import ESTIMATORS, c_of_beta
+from .fitting import ENGINES
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def _is_positive(x: float) -> bool:
+    """Positive and finite; false for NaN."""
+    return 0 < x < np.inf
 
 
 @dataclass
 class StudyDesign:
     """Design assumptions shared by all planning modes.
 
-    alpha, sides     : type I error; one- (1) or two-sided (2) Wald test.
+    Invalid values raise `ValueError` at construction, naming the field.
+    Fields changed after construction are not re-checked; use
+    `dataclasses.replace`, which is.
+
+    alpha, sides     : type I error, in (0, 0.5); one- (1) or two-sided (2)
+                       Wald test.
     median_os        : baseline (biomarker at its mean) median OS, months.
-    censor_rate      : marginal censoring probability (default 0.20); ignored
-                       when accrual_months / followup_months are given.
+    censor_rate      : marginal censoring probability (default 0.20). Give
+                       this or accrual_months / followup_months, not both.
     accrual_months,
     followup_months  : uniform accrual period and minimum follow-up after the
-                       last enrolment; censoring is then derived with
+                       last enrolment, given together and not both zero;
+                       censoring is then derived with
                        `censor_rate_from_design`.
     dropout_annual   : annual loss-to-follow-up fraction (accrual design only).
     non_evaluable    : fraction of enrolled patients without a usable
@@ -57,6 +75,44 @@ class StudyDesign:
     n_sims: int = 1000
     n_sims_grid: int = 1000
     seed: int = 42
+
+    def __post_init__(self) -> None:
+        _require(0 < self.alpha < 0.5, "alpha must be in (0, 0.5)")
+        _require(self.sides in (1, 2), "sides must be 1 or 2")
+        _require(_is_positive(self.median_os), "median_os must be positive and finite")
+
+        has_accrual = self.accrual_months is not None
+        _require(has_accrual == (self.followup_months is not None),
+                 "accrual_months and followup_months must be given together")
+        _require(not (has_accrual and self.censor_rate is not None),
+                 "give either censor_rate or an accrual/follow-up design, not both")
+        if has_accrual:
+            _require(0 <= self.accrual_months < np.inf and 0 <= self.followup_months < np.inf,
+                     "accrual_months and followup_months must be non-negative and finite")
+            _require(self.accrual_months + self.followup_months > 0,
+                     "accrual_months and followup_months cannot both be zero: "
+                     "no patient would be followed up")
+        _require(not self.dropout_annual or has_accrual,
+                 "dropout_annual requires accrual_months/followup_months "
+                 "(with censor_rate, include dropout in the censoring rate)")
+        if self.censor_rate is not None:
+            _require(0 <= self.censor_rate < 1, "censor_rate must be in [0, 1)")
+        for name in ("dropout_annual", "non_evaluable", "r2"):
+            _require(0 <= getattr(self, name) < 1, f"{name} must be in [0, 1)")
+
+        _require(isinstance(self.n_covariates, Integral) and self.n_covariates >= 0,
+                 "n_covariates must be a non-negative integer")
+        _require(self.r2 == 0 or self.n_covariates >= 1, "r2 requires n_covariates >= 1")
+        if self.biomarker_sd is not None:
+            _require(_is_positive(self.biomarker_sd), "biomarker_sd must be positive and finite")
+        _require(self.c_estimator in ESTIMATORS, f"c_estimator must be one of {ESTIMATORS}")
+        if self.c_tau is not None:
+            _require(_is_positive(self.c_tau), "c_tau must be positive and finite")
+        _require(self.engine in ENGINES, f"engine must be one of {ENGINES}")
+        for name in ("n_sims", "n_sims_grid"):
+            value = getattr(self, name)
+            _require(isinstance(value, Integral) and value >= 1,
+                     f"{name} must be a positive integer")
 
     @property
     def lambda0(self) -> float:

@@ -5,7 +5,7 @@ Under the Cox Proportional-Hazards Model: Continuous vs. Dichotomized Analysis,
 Adjustment, Concordance, and Robustness to Non-Proportional Hazards* (revised
 November 3, 2026).
 
-!!! warning "Deprecated: `survpower.report` and `survpower report` are removed in 0.4.0"
+!!! warning "`survpower.report` and `survpower report` were removed in 0.4.0"
     To regenerate the report's numbers, install the `v0.2.0` tag, the last
     release made to reproduce it:
 
@@ -13,10 +13,11 @@ November 3, 2026).
     pip install "git+https://github.com/JoanSano/survpower.git@v0.2.0"
     ```
 
-    Worked tutorials of the same analyses, with explanations and adjustable
-    parameters, are being written
-    ([#12](https://github.com/JoanSano/survpower/issues/12)). The C ↔ HR table
-    (Table 8) is available as `survpower.concordance.mapping_table`.
+    Everything on this page that names `report` or `scripts/`, including the
+    table below, exists at that tag and not in this version, until
+    [#26](https://github.com/JoanSano/survpower/issues/26) maps each table to a
+    tutorial. The C ↔ HR table (Table 8) is still available as
+    `survpower.concordance.mapping_table`.
 
 With the `v0.2.0` tag installed, both parts can be regenerated:
 
@@ -30,7 +31,7 @@ or `python scripts/reproduce_report.py` / `python scripts/reproduce_appendix_b.p
 
 ## Where each result comes from
 
-| Report item | Function | Output |
+| Report item | Function (at `v0.2.0`) | Output |
 |---|---|---|
 | Table 1 (continuous vs. dichotomized, same data) | `report.run_part1` | `table1_continuous_vs_dichotomized.csv` |
 | Table 2, Figure 1 (calibrated N with MC interval) | `report.run_part1b`, `plotting.plot_calibration_curves` | `table2_calibrated_sample_size.csv`, `fig1_calibration_curve.pdf` |

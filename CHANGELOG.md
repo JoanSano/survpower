@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Removed
+- `survpower.report`, the `report` subcommand and `scripts/reproduce_report.py` /
+  `scripts/reproduce_appendix_b.py`, deprecated in 0.3.0. `survpower report` now exits
+  with a message pointing to the `v0.2.0` tag, which reproduces every report table
+  exactly, and to the tutorials. `concordance.mapping_table` still gives Table 8. The
+  plotting helpers the module used are kept for the tutorials (#27).
+
 ### Fixed
 - `StudyDesign` now raises `ValueError` at construction for invalid values, naming the
   field. Before, the Python API accepted them, and some returned impossible answers

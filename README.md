@@ -110,21 +110,19 @@ src/survpower/
   censoring.py     censoring calibration and the accrual calendar
   sensitivity.py   collinearity / EPV / heterogeneous / omitted / waning / crossing studies
   fitting.py       fast univariate Cox solver, Wald decisions
-  dgp.py, baseline.py, plotting.py, report.py, cli.py
+  dgp.py, baseline.py, plotting.py, cli.py
 tests/             pytest suite
 docs/              MkDocs sources
 ```
 
 ## Reproducing the report
 
-`survpower report` and `survpower.report` are **deprecated** and will be removed in
-0.4.0; tutorials covering the same analyses are being written (#12). To regenerate
-the report's numbers exactly, install the `v0.2.0` tag:
+The code that generated the report's tables was removed in 0.4.0, and tutorials
+covering the same analyses are being written. To regenerate the report's numbers
+exactly, install the `v0.2.0` tag:
 
 ```bash
 pip install "git+https://github.com/JoanSano/survpower.git@v0.2.0"
-survpower report --outdir report_out             # main report (revised Nov 2026)
-survpower report --appendix-b --outdir appB_out  # Appendix B (concordance)
 ```
 
 See [Reproducing the report](https://joansano.github.io/survpower/main/reproducing-the-report/).

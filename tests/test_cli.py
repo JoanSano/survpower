@@ -1,6 +1,7 @@
 """End-to-end smoke tests: every planning mode through the CLI, with few
 replicates. They check plumbing and outputs, not Monte Carlo accuracy."""
 
+import importlib
 import os
 
 import pandas as pd
@@ -123,7 +124,15 @@ def test_protective_interval_is_reciprocal(tmp_path):
     assert "Monte Carlo intervals" in row["summary"]
 
 
-def test_report_subcommand_deprecated(tmp_path, capsys):
-    main(["report", "--appendix-b", "--n-sims", "20", "--outdir", str(tmp_path)])
-    assert "deprecated" in capsys.readouterr().err
-    assert (tmp_path / "table8_concordance_mapping.csv").exists()
+@pytest.mark.parametrize("args", [["report"], ["report", "--appendix-b", "--outdir", "x"]])
+def test_report_command_explains_its_removal(args, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(args)
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "removed in 0.4.0" in err and "v0.2.0" in err and "Tutorials" in err
+
+
+def test_report_module_is_gone():
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("survpower.report")

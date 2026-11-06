@@ -1,7 +1,6 @@
 """Command-line interface.
 
     survpower [planning options]      plan a study (see `survpower --help`)
-    survpower report [--appendix-b]   reproduce the report (deprecated, removed in 0.4.0)
 
 What is solved for is inferred from what you give:
 
@@ -19,7 +18,6 @@ import os
 import re
 import sys
 import time
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -38,9 +36,9 @@ from .planning import (
 from .sensitivity import SENSITIVITY_CHOICES, run_sensitivity
 
 QUICK_SIMS = {"n_sims": 200, "n_sims_grid": 100, "n_sims_sensitivity": 100}
-REPORT_DEPRECATION = (
-    "warning: `survpower report` is deprecated and will be removed in 0.4.0. To reproduce "
-    "the report's numbers, install the v0.2.0 tag:\n"
+REPORT_REMOVED = (
+    "the report command was removed in 0.4.0; install survpower==0.2.x (tag v0.2.0) to "
+    "reproduce the report, or see the Tutorials:\n"
     "  pip install \"git+https://github.com/JoanSano/survpower.git@v0.2.0\"\n"
     "See https://joansano.github.io/survpower/main/reproducing-the-report/"
 )
@@ -63,7 +61,6 @@ EPILOG = """examples:
                                                      power, adjusted model
   survpower --c-index 0.70 --c0 0.65                 N to show C > 0.65
   survpower --c-index 0.70 --precision 0.05          N for a +/-0.05 CI on C
-  survpower report --appendix-b                      reproduce Appendix B (deprecated)
 """
 
 
@@ -150,19 +147,6 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--seed", type=int, default=42, help="random seed")
     m.add_argument("--outdir", default="survpower_output", help="directory for CSV / PDF outputs")
     m.add_argument("--no-plots", action="store_true", help="skip figure generation")
-    return parser
-
-
-def build_report_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="survpower report", formatter_class=_HelpFormatter,
-        description="Reproduce the report's tables (CSV) and figures (PDF). Deprecated: "
-                    "removed in 0.4.0; install the v0.2.0 tag for exact reproduction.")
-    parser.add_argument("--appendix-b", action="store_true",
-                        help="reproduce Appendix B (concordance index) instead of the main report")
-    parser.add_argument("--n-sims", type=int, default=1000,
-                        help="replicates per cell (Appendix B only)")
-    parser.add_argument("--outdir", default="survpower_report", help="output directory")
     return parser
 
 
@@ -347,16 +331,8 @@ def _plan(argv: list) -> None:
 def main(argv: list | None = None) -> None:
     argv = sys.argv[1:] if argv is None else list(argv)
     if argv and argv[0] == "report":
-        args = build_report_parser().parse_args(argv[1:])
-        print(REPORT_DEPRECATION, file=sys.stderr)
-        with warnings.catch_warnings():  # the notice above already says it
-            warnings.simplefilter("ignore", DeprecationWarning)
-            from .report import reproduce_appendix_b, reproduce_report
-        if args.appendix_b:
-            reproduce_appendix_b(args.outdir, n_sims=args.n_sims)
-        else:
-            reproduce_report(args.outdir)
-        return
+        print(f"survpower: error: {REPORT_REMOVED}", file=sys.stderr)
+        sys.exit(2)
     _plan(argv)
 
 

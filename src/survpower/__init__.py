@@ -67,6 +67,6 @@ from . import scenario
 from .scenario import Effect, Scenario, scenario_for
 from .scenario import simulate as simulate_scenario
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [name for name in dir() if not name.startswith("_")]

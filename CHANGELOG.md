@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-11-06
+
+Milestone M1.5 (CLI and model seams): question subcommands (#61), one route from
+`StudyDesign` to a `Scenario` (#62) and removal of `survpower.report` (#27). No numeric
+results change: at fixed seeds, the CSVs are byte-identical to those from before these
+changes. `StudyDesign` also now validates its values at construction and is frozen (#50).
+**Scripts should move to the subcommands**: the old syntax is removed in 0.4.1 (#66).
 
 ### Added
 - `survpower.Effect` (a scale and a per-SD value) and `survpower.scenario_for`

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+- `survpower.Effect` (a scale and a per-SD value) and `survpower.scenario_for`
+  (provisional), plus a contributor guide to adding models,
+  `docs/dev/adding-a-model.md` (#62).
 ### Removed
 - `survpower.report`, the `report` subcommand and `scripts/reproduce_report.py` /
   `scripts/reproduce_appendix_b.py`, deprecated in 0.3.0. `survpower report` now exits
@@ -21,6 +25,16 @@
   is rejected (#50).
 
 ### Changed
+- `CensoringModel.draw` now also receives the cohort's event times: `draw(cov,
+  event_times, rng)`. Custom censoring models must add the argument (the scenario API is
+  provisional). Existing models ignore it; a model can use it to cut an analysis at a
+  target number of events (#62).
+- The unadjusted power, sample-size and detectable-effect paths now build their
+  simulations with `scenario_for(design, effect, analyses)`, so a new design option has
+  one place to reach them. Results are identical at a fixed seed. Adjusted, sensitivity
+  and concordance paths raise `ValueError` for any model they cannot honour, rather than
+  fall back to the exponential model, and `method="closed_form"` raises for a model with no
+  closed form (#62).
 - Passing `censor_rate` together with `accrual_months` / `followup_months` to
   `StudyDesign` now raises, as `dropout_annual` without an accrual design does. Both were
   silently ignored in Python, and the CLI already rejected them (#50).

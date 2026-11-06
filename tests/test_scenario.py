@@ -96,7 +96,7 @@ class _FixedCensoring:
     def calibrated(self, sampler, seed):
         return self
 
-    def draw(self, cov, rng):
+    def draw(self, cov, event_times, rng):
         return np.full(cov.n, self.at)
 
 
@@ -127,7 +127,7 @@ def test_exponential_ph_survival_and_median():
 
 def test_uncalibrated_censoring_needs_rate():
     with pytest.raises(ValueError, match="calibrated"):
-        ExponentialCensoring().draw(Covariates(np.zeros(3)), np.random.default_rng(0))
+        ExponentialCensoring().draw(Covariates(np.zeros(3)), np.zeros(3), np.random.default_rng(0))
     fixed = ExponentialCensoring(rate=0.1)
     assert fixed.calibrated(None, seed=0) is fixed
 

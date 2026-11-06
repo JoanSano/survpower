@@ -114,6 +114,20 @@ class StudyDesign:
             _require(isinstance(value, Integral) and value >= 1,
                      f"{name} must be a positive integer")
 
+    def non_default_models(self) -> tuple:
+        """Names of the fields that select a model other than exponential PH with
+        exponential censoring. None exist yet: #14 and #16 add them."""
+        return ()
+
+    def require_default_models(self, path: str) -> None:
+        """Raise if `path` cannot honour this design's models. Every path that is
+        not built on `scenario.scenario_for` calls this: an unsupported combination
+        must fail, never fall back to the exponential model."""
+        unsupported = self.non_default_models()
+        if unsupported:
+            raise ValueError(f"{path} supports only exponential PH with exponential censoring; "
+                             f"this design sets: {', '.join(unsupported)}")
+
     @property
     def lambda0(self) -> float:
         return median_os_to_lambda0(self.median_os)

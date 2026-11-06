@@ -18,6 +18,7 @@ from survpower.concordance import (
     gonen_heller_c_with_se,
     harrell_c_with_se,
     harrell_limit,
+    mapping_table,
     precision_half_width,
     precision_sample_size,
     simulate_cindex_power,
@@ -193,3 +194,11 @@ def test_gonen_heller_univariate_uses_fast_fit_and_is_orientation_free():
     assert concordance_index(t, d, -x, method="gonen-heller") == pytest.approx((c, se))
     with pytest.raises(ValueError):
         gonen_heller_c_with_se(np.ones((10, 2)), [1.0])
+
+
+def test_mapping_table_matches_table8():
+    df = mapping_table()
+    assert np.round(df["beta"], 3).tolist() == [0.179, 0.370, 0.585, 0.844, 1.177]
+    assert df["hr"].round(2).tolist() == [1.20, 1.45, 1.80, 2.33, 3.24]
+    assert df["harrell_limit"].round(4).tolist() == [0.5501, 0.6006, 0.6517, 0.7032, 0.7548]
+    assert df["N80_closed_form"].tolist() == [306, 72, 29, 14, 8]

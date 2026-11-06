@@ -18,7 +18,6 @@ re-exported from the top-level package (`from survpower import ...`).
 | `survpower.fitting` | fast univariate Cox solver and Wald decisions |
 | `survpower.dgp` | event-time generators |
 | `survpower.baseline` | baseline hazard calibration |
-| `survpower.report` | reproduction of the report and Appendix B (deprecated, removed in 0.4.0) |
 | `survpower.plotting` | figures |
 
 ## Design
@@ -117,13 +116,6 @@ The same seed gives the same result within one installed version.
 ## Baseline hazard
 
 ::: survpower.baseline
-
-## Report reproduction (deprecated)
-
-Importing `survpower.report` emits a `DeprecationWarning`; the module is
-removed in 0.4.0. See [Reproducing the report](reproducing-the-report.md).
-
-::: survpower.report
 
 ## Plotting
 

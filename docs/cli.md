@@ -2,7 +2,6 @@
 
 ```text
 survpower [options]                       plan a study
-survpower report [--appendix-b] [...]     reproduce the report (deprecated)
 ```
 
 ## What gets solved for
@@ -82,16 +81,3 @@ Run at the given or solved (N, HR) for hazard-ratio questions.
 | `--seed` | 42 | random seed |
 | `--outdir` | survpower_output | output directory |
 | `--no-plots` | | skip PDF figures |
-
-## `survpower report`
-
-!!! warning "Deprecated"
-    Removed in 0.4.0. It prints a notice on stderr when run. For exact
-    reproduction, install the `v0.2.0` tag; see
-    [Reproducing the report](reproducing-the-report.md).
-
-| Option | Default | Meaning |
-|---|---|---|
-| `--appendix-b` | | reproduce Appendix B (concordance) instead of the main report |
-| `--n-sims` | 1000 | replicates per cell (Appendix B) |
-| `--outdir` | survpower_report | output directory |

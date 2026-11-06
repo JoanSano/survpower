@@ -10,13 +10,13 @@ Power and sample-size planning for a **continuous biomarker** analysed with a
 clinical-trial design. Effect sizes can be a hazard ratio (per SD or per raw
 unit) or a **concordance index** (Harrell's or Uno's C).
 
-Give two of *effect size*, *sample size* and *power*, and `survpower` solves for
-the third by simulating the planned analysis (closed-form formulas are used as
+Ask for one of *power*, *sample size* or *detectable effect*, give the other two,
+and `survpower` solves for it by simulating the planned analysis (closed-form formulas are used as
 an anchor and reported alongside). Every result comes with a sentence ready for
 the protocol.
 
 ```console
-$ survpower --c-index 0.55 0.60 0.70
+$ survpower sample-size --c-index 0.55 0.60 0.70
 ...
   - To detect a hazard ratio of 1.2 per SD of the biomarker (concordance 0.550) with 80%
     power (two-sided Wald test at alpha = 0.05), about 258 events are required (20%
@@ -61,17 +61,19 @@ Check the install with `survpower --help` and `pytest -q`.
 
 | You give | Command | You get |
 |---|---|---|
-| effect + N | `survpower --hr 1.15 --n 250 1200` | power (with Monte Carlo CI) |
-| effect | `survpower --hr 1.15 --power 0.8 0.9` | events and N needed |
-| N | `survpower --n 250` | minimum detectable HR and C |
-| C vs. benchmark | `survpower --c-index 0.70 --c0 0.65` | N to show C > C₀ |
-| precision of C | `survpower --c-index 0.70 --precision 0.05` | N for a ±0.05 CI |
+| effect + N | `survpower power --hr 1.15 --n 250 1200` | power (with Monte Carlo CI) |
+| effect | `survpower sample-size --hr 1.15 --power 0.8 0.9` | events and N needed |
+| N | `survpower detectable-effect --n 250` | minimum detectable HR and C |
+| C vs. benchmark | `survpower benchmark --c-index 0.70 --c0 0.65` | N to show C > C₀ |
+| precision of C | `survpower precision --c-index 0.70 --half-width 0.05` | N for a ±0.05 CI |
+| precision at N | `survpower precision --c-index 0.70 --n 200` | CI half-width at that N |
 
 Design options: `--median-os`, `--censor-rate` or `--accrual-months/--followup-months/--dropout`,
 `--non-evaluable`, `--n-covariates/--r2`, `--sides`, `--biomarker-sd`,
-`--c-estimator {harrell,uno}`, `--c-tau`. Sensitivity analyses:
+`--c-estimator {harrell,uno,gonen-heller}`, `--c-tau`. Each command only offers the flags
+it reads. Sensitivity analyses:
 `--sensitivity collinearity epv heterogeneous omitted waning crossing`. See
-`survpower --help` and [`examples/grant_recipes.sh`](examples/grant_recipes.sh).
+`survpower COMMAND --help`, the [CLI reference](docs/cli.md) and [`examples/grant_recipes.sh`](examples/grant_recipes.sh).
 
 From Python:
 

@@ -101,10 +101,10 @@ and reports it in the summary sentence and the `censor_rate` column:
 
 | Question | HR used for the censored fraction |
 |---|---|
-| Power (`--hr` and `--n`) | each HR given |
-| Sample size (`--hr`) | each HR given |
-| Minimum detectable HR (`--n`) | the detectable HR itself. It is unknown in advance, so the closed-form detectable HR and the fraction are iterated together until they agree, starting at HR = 1 |
-| Concordance questions (`--c`, `--c0`, `--precision`) | the HR implied by the target C |
+| Power (`power`) | each HR given |
+| Sample size (`sample-size`) | each HR given |
+| Minimum detectable HR (`detectable-effect`) | the detectable HR itself. It is unknown in advance, so the closed-form detectable HR and the fraction are iterated together until they agree, starting at HR = 1 |
+| Concordance questions (`benchmark`, `precision`) | the HR implied by the target C |
 
 For the minimum detectable HR this takes two steps:
 

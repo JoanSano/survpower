@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+### Changed
+- **The CLI's question is now a command**, not inferred from the flags (#61). A missing
+  flag used to change the question with no error: `--hr 1.15 --n 250` without `--n`
+  became a sample-size calibration. CSV names, columns and every number are unchanged.
+
+  | Before | Now |
+  |---|---|
+  | `survpower --hr 1.15 --n 250` | `survpower power --hr 1.15 --n 250` |
+  | `survpower --hr 1.15` | `survpower sample-size --hr 1.15` |
+  | `survpower --n 250` | `survpower detectable-effect --n 250` |
+  | `survpower --c-index 0.7 --c0 0.65` | `survpower benchmark --c-index 0.7 --c0 0.65` |
+  | `survpower --c-index 0.7 --precision 0.05` | `survpower precision --c-index 0.7 --half-width 0.05` |
+  | `survpower --c-index 0.7 --precision 0.05 --n 200` | `survpower precision --c-index 0.7 --n 200` |
+
+  `--c-index` also works with `power` and `sample-size`. The old syntax still works,
+  with a warning on stderr that shows the new command, and is removed in 0.4.1 (#66).
+- Each command offers only the flags its path reads, so a flag that used to be accepted
+  and ignored now exits with code 2: `--sides` on `benchmark`, `--c-estimator` on `power`,
+  `--power` on `power`, `--sensitivity` on `precision`, `--c-tau` without
+  `--c-estimator uno`, and `--tau`, `--waning-hr`, `--crossing-hr` or `--n-sims-sensitivity`
+  without an analysis that uses them. The old syntax drops these instead, and the warning
+  lists them, so old scripts keep their results (#61).
+- `--precision` is now `--half-width` (#61). Flags can no longer be abbreviated on the
+  commands, so that adding a flag cannot break a script.
+- `survpower` with no command prints the help and exits with code 2 (#61).
+
+### Added
+- `survpower --version` (#61; #54 builds on it).
+
+### Fixed
+- `precision --n` returns the half-width at that N without a dummy target (#61). The
+  design summary no longer prints a two-sided Wald test for `benchmark`, which is always
+  one-sided (#61).
+
 ### Removed
 - `survpower.report`, the `report` subcommand and `scripts/reproduce_report.py` /
   `scripts/reproduce_appendix_b.py`, deprecated in 0.3.0. `survpower report` now exits

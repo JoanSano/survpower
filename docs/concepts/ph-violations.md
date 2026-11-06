@@ -5,7 +5,7 @@ biomarker's effect plausibly changes with time, check the design under a
 realistic alternative.
 
 ```bash
-survpower --hr 1.30 --n 400 --sensitivity waning crossing --tau 6
+survpower power --hr 1.30 --n 400 --sensitivity waning crossing --tau 6
 ```
 
 ## Scenarios

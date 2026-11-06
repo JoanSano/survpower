@@ -117,18 +117,6 @@ tests/             pytest suite
 docs/              MkDocs sources
 ```
 
-## Reproducing the report
-
-The code that generated the report's tables was removed in 0.4.0, and tutorials
-covering the same analyses are being written. To regenerate the report's numbers
-exactly, install the `v0.2.0` tag:
-
-```bash
-pip install "git+https://github.com/JoanSano/survpower.git@v0.2.0"
-```
-
-See [Reproducing the report](https://joansano.github.io/survpower/main/reproducing-the-report/).
-
 ## Tests
 
 ```bash

@@ -43,8 +43,7 @@ DEFAULT_SIMS_SENSITIVITY = 300
 REPORT_REMOVED = (
     "the report command was removed in 0.4.0; install survpower==0.2.x (tag v0.2.0) to "
     "reproduce the report, or see the Tutorials:\n"
-    "  pip install \"git+https://github.com/JoanSano/survpower.git@v0.2.0\"\n"
-    "See https://joansano.github.io/survpower/main/reproducing-the-report/"
+    "  pip install \"git+https://github.com/JoanSano/survpower.git@v0.2.0\""
 )
 UNIVARIATE = ("concordance questions are univariate; to show added value over a clinical "
               "model, power the adjusted HR (survpower power or sample-size, with --hr, "

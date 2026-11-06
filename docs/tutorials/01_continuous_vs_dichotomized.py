@@ -7,7 +7,7 @@
 # **Design assumptions.** X ~ N(0, 1), exponential survival with a median of
 # 15 months, 20% independent censoring, two-sided α = 0.05. Both analyses run on
 # the *same* simulated cohorts, so the difference is not Monte Carlo noise between
-# separate runs. The cohorts and effects are those of Table 1 in the report.
+# separate runs.
 
 # %%
 import os
@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from survpower.closed_form import dichotomized_power
+from survpower.closed_form import dichotomized_power, theoretical_power_with_r2
 from survpower.simulate import simulate_continuous_vs_dichotomized
 
 # Replicates per cell. The docs build uses the default; CI smoke-tests with 50.
@@ -85,26 +85,24 @@ print(f"Asymptotic relative efficiency 2/pi = {2 / np.pi:.3f}")
 print(f"Events multiplier pi/2 = {np.pi / 2:.3f}")
 
 # %% [markdown]
-# ## Agreement with the report
+# ## Agreement with the closed forms
 #
-# The report's Table 1 gives power 0.849 for the continuous analysis and 0.654
-# for the Schoenfeld closed form of the median split at N = 1200, HR = 1.10. At the
-# default budget this script fails if the continuous value differs from the report
-# by more than 3 MCSE, or the median-split value from the closed form by more than
-# 3 MCSE.
+# At N = 1200, HR = 1.10, the simulated continuous power should match the closed form
+# for the Wald test, and the median-split power should match Schoenfeld's closed form.
+# At the default budget this script fails if either differs by more than 3 MCSE.
 
 # %%
-REPORT_POWER_CONT = 0.849
-REPORT_SCHOENFELD = 0.654
+CLOSED_CONT = theoretical_power_with_r2(n=1200, hr=1.10, censor_rate=0.20, r2_target=0.0)
+CLOSED_DICH = dichotomized_power(1200, 1.10, 0.20, method="schoenfeld")
 cell = table[(table["n"] == 1200) & (table["hr_per_sd"] == 1.10)].iloc[0]
-gap_cont = abs(cell["power_cont"] - REPORT_POWER_CONT) / cell["power_cont_mcse"]
-gap_dich = abs(cell["power_dich"] - REPORT_SCHOENFELD) / cell["power_dich_mcse"]
+gap_cont = abs(cell["power_cont"] - CLOSED_CONT) / cell["power_cont_mcse"]
+gap_dich = abs(cell["power_dich"] - CLOSED_DICH) / cell["power_dich_mcse"]
 print(f"Continuous:   {cell['power_cont']:.3f} (MCSE {cell['power_cont_mcse']:.3f}), "
-      f"report {REPORT_POWER_CONT}: {gap_cont:.1f} MCSE apart")
+      f"closed form {CLOSED_CONT:.3f}: {gap_cont:.1f} MCSE apart")
 print(f"Median split: {cell['power_dich']:.3f} (MCSE {cell['power_dich_mcse']:.3f}), "
-      f"Schoenfeld {REPORT_SCHOENFELD}: {gap_dich:.1f} MCSE apart")
+      f"Schoenfeld {CLOSED_DICH:.3f}: {gap_dich:.1f} MCSE apart")
 if N_SIMS >= 1000:
-    assert gap_cont <= 3 and gap_dich <= 3, "tutorial contradicts the report's Table 1"
+    assert gap_cont <= 3 and gap_dich <= 3, "simulation contradicts the closed forms"
 
 # %% [markdown]
 # ## What would change this

@@ -47,7 +47,6 @@ nav:
       - Continuous vs. median split: tutorials/01_continuous_vs_dichotomized.py
       - Sample size for a target power: tutorials/02_sample_size_for_target_power.py
   - Python API: api.md
-  - Reproducing the report: reproducing-the-report.md
   - References: references.md
   - Changelog: changelog.md
 

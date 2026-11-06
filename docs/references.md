@@ -1,8 +1,6 @@
 # References
 
-The methods in `survpower` follow the accompanying report (revised November 3,
-2026). This list covers the works the package and these pages rely on; the
-report has the complete bibliography.
+The works the package and these pages rely on.
 
 ## Cox model and partial likelihood
 

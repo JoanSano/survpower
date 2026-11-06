@@ -89,10 +89,10 @@ for hr, res in results.items():
     print(f"HR {hr:.2f}: N* = {res.n_evaluable} {verdict} closed-form N = {res.n_closed_form}")
 
 # %% [markdown]
-# ## Agreement with the report
+# ## Agreement with the closed form
 #
 # The closed-form values are exact: 864 events and N = 1081 for HR = 1.10, and
-# 402 events and N = 503 for HR = 1.15 (report Section 8.2). This script always
+# 402 events and N = 503 for HR = 1.15 (Hsieh & Lavori, 2000). This script always
 # checks them. At the default budget it also checks that power at N\* is within
 # 3 MCSE of the target.
 

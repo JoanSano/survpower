@@ -44,7 +44,7 @@ empirical SE.
 | Engine | Used for | Notes |
 |---|---|---|
 | `fast` (default) | univariate fits | vectorized Newton–Raphson on the partial likelihood; agrees with lifelines to ~1e-6, 10–50× faster |
-| `lifelines` | adjusted models, PH tests, report reproduction | `CoxPHFitter`, with a small ridge fallback if a fit is near-singular |
+| `lifelines` | adjusted models, PH tests | `CoxPHFitter`, with a small ridge fallback if a fit is near-singular |
 
 Both engines give identical decisions on the same seeds (tested).
 
@@ -65,14 +65,15 @@ Power is approximately probit-linear in \(\sqrt N\):
 !!! warning "Report the interval, and check it excludes the closed form"
     A calibrated N whose interval contains the closed-form N has not been
     calibrated. The correction it is meant to detect (~2%) is smaller than the
-    noise. At 300 replicates per point the revised report found N* = 1053
-    [1002, 1108] for HR 1.10: wider than the correction. At 2000 per point it
-    was 1107 [1084, 1130]. The default here is 1000 per point; the summary
+    noise. For HR 1.10 (closed-form N = 1081), the interval is about 130 patients
+    wide at 300 replicates per point, 65 at 1000 and 47 at 2000, against a
+    correction of about 20 patients. The default here is 1000 per point; the summary
     sentence says when the interval contains the closed form. Raise
     `--n-sims-grid` for the final numbers.
 
-**Small-N fallback.** When \(N^* < 100\) the probit form is unreliable (the
-report's Appendix B: fitted N* = 19 confirmed at only 75.5% for C = 0.70). In
+**Small-N fallback.** When \(N^* < 100\) the probit fit is not precise enough.
+Each patient moves power by a visible amount there, and for C = 0.70 and a target
+of 80% the fitted N* confirmed as low as 77% in 15 runs. In
 that case `survpower` scans nine integers in \([0.7N^*, 1.5N^*]\) at full
 precision and keeps the smallest N that reaches the target. The `calibration`
 column says which method was used.
@@ -85,10 +86,7 @@ bootstrap interval, `hr_ci_low` / `hr_ci_high`), confirm.
 
 ## Reproducibility
 
-Every function takes a seed and draws in a fixed order. The regression tests
-pin the simulation engines against values produced by the original
-single-file script (exact equality on the same seeds). See
-[Reproducing the report](../reproducing-the-report.md) for which tables match
-digit for digit. Following Burton et al. (2006) and Morris et al. (2019),
+Every function takes a seed and draws in a fixed order, so the same seed gives
+the same result within one installed version. Following Burton et al. (2006) and Morris et al. (2019),
 report the seed, the number of replicates and the Monte Carlo SE with any
 simulated quantity.

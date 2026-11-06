@@ -33,9 +33,10 @@ of \(X\) only adds residual variance. In the Cox model it also **attenuates**
 (Gail et al., 1984; Struthers & Kalbfleisch, 1986; Schmoor & Schumacher, 1997).
 So pre-specified adjustment for strongly prognostic covariates, when they are
 only weakly correlated with the biomarker, is a power **gain**, not a cost
-(Hernández et al., 2006). In the revised report's design (N = 1200, five
-independent prognostic covariates), unadjusted power fell from 0.82 to 0.28 as
-the covariates' effects grew, while adjusted power stayed at about 0.83.
+(Hernández et al., 2006). At N = 1200 and HR 1.10, with five independent
+prognostic covariates, unadjusted power falls from about 0.83 to 0.26 as the
+covariates' effects grow (\(\sigma_z\) from 0 to 1), while adjusted power stays
+at about 0.83 (1000 replicates per setting, MCSE at most 0.016).
 
 ```bash
 survpower power --hr 1.10 --n 1200 --sensitivity omitted

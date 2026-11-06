@@ -28,7 +28,7 @@ N_SIMS = int(os.environ.get("SURVPOWER_TUTORIAL_SIMS", 1000))
 | Docs build of other branches | 50 (`scripts/build_docs_site.sh`) | keeps the multi-branch build fast |
 
 Prose must not quote a simulated number, since the number changes with the budget.
-Print it from code instead. Checks against the report run only when `N_SIMS >= 1000`.
+Print it from code instead. Checks of simulated values run only when `N_SIMS >= 1000`.
 
 ## Style template
 
@@ -39,7 +39,7 @@ Each tutorial has these parts, in this order:
 3. Code
 4. A table with MCSEs or intervals (every simulated number carries one)
 5. Interpretation
-6. Agreement with the report (an `assert`, so a tutorial cannot quietly contradict it)
+6. Agreement with an analytic result (an `assert`, so a tutorial cannot quietly contradict it)
 7. "What would change this"
 
 Do not import `survpower.plotting` in a tutorial: it sets the Agg backend on import, which

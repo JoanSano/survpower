@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+- The docs and README no longer refer to the report, and the "Reproducing the report"
+  page is gone. `survpower report` still names the `v0.2.0` tag. Numbers that cited the
+  report are recomputed with the package, and tutorial 01 now checks its simulated power
+  against the closed forms (#70).
+
+### Fixed
+- `docs/concepts/methods.md` no longer describes regression tests that were removed in
+  0.3.0.
+
 ## 0.4.0 — 2026-11-06
 
 Milestone M1.5 (CLI and model seams): question subcommands (#61), one route from

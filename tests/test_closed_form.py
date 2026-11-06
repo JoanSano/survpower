@@ -13,8 +13,8 @@ from survpower.closed_form import (
 )
 
 
-def test_sample_size_matches_report_section_8_2():
-    # report: D = 864.0 (N = 1081) for HR 1.10; D = 401.8 (N = 503) for HR 1.15
+def test_sample_size_reference_values():
+    # D = 864.0 (N = 1081) for HR 1.10; D = 401.8 (N = 503) for HR 1.15
     D, N = sample_size_continuous_cph(1.10, 0.80)
     assert D == pytest.approx(864.0, abs=0.1) and N == 1081
     D, N = sample_size_continuous_cph(1.15, 0.80)
@@ -41,7 +41,7 @@ def test_one_sided_needs_fewer_events():
     assert sample_size_continuous_cph(1.2, 0.8, sides=1)[0] < sample_size_continuous_cph(1.2, 0.8)[0]
 
 
-def test_dichotomized_matches_report_table_1():
+def test_dichotomized_reference_values():
     assert group_hr_from_persd_hr(1.10) == pytest.approx(1.164, abs=1e-3)
     assert dichotomized_power(1200, 1.10, 0.2) == pytest.approx(0.652, abs=1e-3)
     assert dichotomized_power(250, 1.15, 0.2) == pytest.approx(0.348, abs=1e-3)

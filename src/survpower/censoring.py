@@ -1,4 +1,4 @@
-"""Independent censoring and its calibration (report Section 3).
+"""Independent censoring and its calibration.
 
 Censoring is C ~ Exponential(lambda_c), independent of T. lambda_c is chosen
 so that the marginal censoring probability P(C < T) hits a target. Because
@@ -64,7 +64,7 @@ def calibrate_censoring_rate_heterogeneous(
 ) -> float:
     """lambda_c for the full linear predictor beta*X + Z @ beta_z, with a fresh
     beta_z ~ N(0, sigma_z^2)^p per chunk so the calibration marginalizes over
-    the distribution of adjustment-covariate effect sizes (Section 10)."""
+    the distribution of adjustment-covariate effect sizes."""
     def sampler(n, rng):
         chunk = max(n // n_chunks, 1000)
         T_parts = []
@@ -84,7 +84,7 @@ def calibrate_censoring_waning(
     beta0: float, tau: float, target_censor_rate: float,
     lambda0: float = DEFAULT_LAMBDA0, n_probe: int = 300_000, seed: int = 1,
 ) -> float:
-    """lambda_c for the waning-effect generator (Appendix A.3)."""
+    """lambda_c for the waning-effect generator."""
     return calibrate_censoring_for(lambda n, rng: gen_waning(n, beta0, tau, lambda0, rng)[0],
                                    target_censor_rate, seed=seed, n_probe=n_probe)
 
@@ -93,7 +93,7 @@ def calibrate_censoring_crossing(
     beta_early: float, beta_late: float, tau: float, target_censor_rate: float,
     lambda0: float = DEFAULT_LAMBDA0, n_probe: int = 300_000, seed: int = 1,
 ) -> float:
-    """lambda_c for the crossing-hazards generator (Appendix A.4)."""
+    """lambda_c for the crossing-hazards generator."""
     return calibrate_censoring_for(
         lambda n, rng: gen_crossing(n, beta_early, beta_late, tau, lambda0, rng)[0],
         target_censor_rate, seed=seed, n_probe=n_probe)

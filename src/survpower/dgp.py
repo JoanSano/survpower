@@ -1,4 +1,4 @@
-"""Event-time generators (report Sections 2, 9, 10 and Appendix A).
+"""Event-time generators.
 
 All generators take a `numpy.random.Generator` and draw in a fixed order so
 that seeded results are reproducible within one installed version.
@@ -17,7 +17,7 @@ def gen_exponential_ph(n: int, beta: float, lambda0: float, rng: np.random.Gener
     return T, X
 
 
-# --- Correlated adjustment covariates (Section 9) ---------------------------
+# --- Correlated adjustment covariates ---------------------------------------
 #
 # Z_j = rho * X + sqrt(1 - rho^2) * W_j, W_j iid N(0, 1): corr(X, Z_j) = rho and
 # corr(Z_i, Z_j) = rho^2. The multiple correlation of X on (Z_1..Z_p) is
@@ -45,7 +45,7 @@ def gen_adjustment_covariates(n: int, r2_target: float, p: int, rng: np.random.G
     return X, Z
 
 
-# --- Non-proportional hazards (Appendix A) -----------------------------------
+# --- Non-proportional hazards ------------------------------------------------
 
 def gen_waning(n: int, beta0: float, tau: float, lambda0: float, rng: np.random.Generator):
     """Hazard ratio exp(beta0) for t < tau and 1 afterwards, by inverse

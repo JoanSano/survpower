@@ -1,4 +1,4 @@
-"""Sensitivity analyses at a planning point (report Sections 9-10, Appendix A).
+"""Sensitivity analyses at a planning point.
 
 These need a concrete (N, HR): the planning CLI runs them at the supplied
 pair, or at the solved one.
@@ -45,7 +45,7 @@ def run_collinearity_study(
     sides: int = 2,
 ) -> pd.DataFrame:
     """Simulated power and mean recovered HR across (R^2, p), with the
-    p-independent closed-form prediction (report Section 9, Figure 2)."""
+    p-independent closed-form prediction."""
     rows = []
     combo_id = 0
     for r2 in r2_grid:
@@ -93,7 +93,7 @@ def run_epv_stress_test(
 ) -> pd.DataFrame:
     """Bias (log-HR scale), SD vs. model SE, nominal power, type-I error and
     size-adjusted power for X as p grows, pushing events-per-variable into
-    single digits (report Section 9.5, Table 3, Figure 3)."""
+    single digits."""
     rows = [simulate_epv_diagnostic(
         n=n, hr=hr, censor_rate=censor_rate, p=p, r2_target=r2_target, lambda0=lambda0,
         n_sims=n_sims, alpha=alpha, sides=sides, seed=seed + 1000 * i,
@@ -118,7 +118,7 @@ def run_omitted_covariates_study(
     sides: int = 2,
 ) -> pd.DataFrame:
     """Adjusted vs. unadjusted analysis when p prognostic covariates are
-    independent of X (report Section 10.4, Table 5): omitting them
+    independent of X: omitting them
     attenuates the HR (non-collapsibility) and costs power."""
     return pd.DataFrame([simulate_adjusted_vs_unadjusted(
         n=n, hr=hr, censor_rate=censor_rate, p=p, sigma_z=s, lambda0=lambda0, n_sims=n_sims,
@@ -140,7 +140,7 @@ def run_heterogeneous_adjustment_study(
     sides: int = 2,
 ) -> pd.DataFrame:
     """Power for X as the adjustment covariates' own effects become more
-    heterogeneous (report Section 10, Figure 4)."""
+    heterogeneous."""
     rows = []
     combo = 0
     for p in p_grid:

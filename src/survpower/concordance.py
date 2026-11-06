@@ -1,4 +1,4 @@
-"""Concordance-index effect sizes and power (report Appendix B).
+"""Concordance-index effect sizes and power.
 
 Three questions a target concordance C can mean, each with its own N:
 
@@ -7,7 +7,7 @@ Three questions a target concordance C can mean, each with its own N:
    under PH; see `survpower.planning`).
 2. **Benchmark** -- does the biomarker's C exceed a benchmark C0 (a minimum
    useful level)? One-sided test of H0: C <= C0 on the estimated C with its
-   asymptotic SE (eq. 29). C0 is treated as a known constant. When the
+   asymptotic SE. C0 is treated as a known constant. When the
    benchmark is a competing model's C estimated on the same patients, the
    right analysis is a paired comparison of correlated C estimates
    (DeLong et al., 1988; Kang et al., 2015), which this module does not
@@ -15,7 +15,7 @@ Three questions a target concordance C can mean, each with its own N:
 3. **Precision** -- how precisely is C estimated? N for a target 95% CI
    half-width.
 
-Mapping (eq. 25): for X ~ N(0, 1) under PH with *any* baseline hazard,
+Mapping: for X ~ N(0, 1) under PH with *any* baseline hazard,
 P(T_i < T_j | X_i, X_j) = expit(beta (X_i - X_j)), so the population
 (Goenen-Heller) concordance K(beta) is a 1-D integral over D = X_i - X_j ~ N(0, 2).
 
@@ -23,7 +23,7 @@ Estimators:
 
 * **Harrell's C** counts a pair as comparable when the shorter observed time
   is an event. Under censoring it converges to `harrell_limit` (> K(beta));
-  benchmark sample sizes use that limit (Table 10). The offset is small at
+  benchmark sample sizes use that limit. The offset is small at
   20% censoring (0.7032 vs. 0.70) and grows with censoring; because
   N ~ (C - C0)^-2, uncertainty in the assumed C itself matters far more, so
   run several plausible C values.
@@ -36,10 +36,10 @@ Estimators:
   it is unaffected by censoring (given a consistent beta_hat). Each pair
   contributes expit(|eta_i - eta_j|), eta = X beta_hat, which works for any
   number of covariates (the concordance of the whole linear predictor). It
-  converges to K(beta) of eq. 25 (`c_of_beta`) in the univariate model.
+  converges to K(beta) (`c_of_beta`) in the univariate model.
 
 Standard errors use the Hajek projection of the (weighted) ratio of
-U-statistics with the delta method (eq. 28); for Uno's C the IPCW weights
+U-statistics with the delta method; for Uno's C the IPCW weights
 are treated as known, which slightly understates the SE (checked by
 simulation in the test-suite). The Gonen-Heller SE adds the uncertainty of
 beta_hat to the U-statistic variance by the delta method, on the smoothed
@@ -66,14 +66,14 @@ if TYPE_CHECKING:  # design.py imports this module
     from .design import StudyDesign
 
 ESTIMATORS = ("harrell", "uno", "gonen-heller")
-RULE_OF_THUMB_KAPPA = 1.64  # fitted to the exact inverse of eq. 25 (Appendix B.1)
+RULE_OF_THUMB_KAPPA = 1.64  # fitted to the exact inverse of `c_of_beta`
 
 
 # --- C <-> beta ---------------------------------------------------------------
 
 def c_of_beta(beta: float) -> float:
     """Population concordance K(beta) = P(T_i < T_j | eta_i > eta_j) for a
-    standard-normal biomarker with per-SD log-HR beta (eq. 25). Symmetric in
+    standard-normal biomarker with per-SD log-HR beta. Symmetric in
     the sign of beta (the concordance of the correctly oriented score)."""
     b = abs(beta)
     s = np.sqrt(2.0)
@@ -94,7 +94,7 @@ def hr_of_c(c: float) -> float:
 
 
 def beta_of_c_approx(c: float, kappa: float = RULE_OF_THUMB_KAPPA) -> float:
-    """Closed-form rule of thumb (eq. 26): beta ~ (kappa / sqrt 2) tan(pi (C - 1/2)),
+    """Closed-form rule of thumb: beta ~ (kappa / sqrt 2) tan(pi (C - 1/2)),
     within 3% of the exact inverse over C in [0.55, 0.75]."""
     return float(kappa / np.sqrt(2.0) * np.tan(np.pi * (c - 0.5)))
 
@@ -103,7 +103,7 @@ def beta_of_c_approx(c: float, kappa: float = RULE_OF_THUMB_KAPPA) -> float:
 
 def harrell_limit(beta: float, lam_c: float, lambda0: float = DEFAULT_LAMBDA0,
                   n: int = 2_000_000, seed: int = 7) -> float:
-    """Large-sample limit of Harrell's C under exponential censoring (eq. 27).
+    """Large-sample limit of Harrell's C under exponential censoring.
     A pair is comparable with probability (r_i + r_j) / (r_i + r_j + 2 lam_c)
     and then concordant with probability expit(|beta| |X_i - X_j|)."""
     rng = np.random.default_rng(seed)
@@ -152,16 +152,16 @@ def concordance_limit(beta: float, lam_c: float, method: str = "harrell",
     raise ValueError(f"method must be one of {ESTIMATORS}")
 
 
-# --- C <-> HR table (Table 8) ---------------------------------------------------
+# --- C <-> HR table -----------------------------------------------------------
 
 def mapping_table(levels=(0.55, 0.60, 0.65, 0.70, 0.75), censor_rate: float = 0.20,
                   design: StudyDesign | None = None, alpha: float = 0.05,
                   power: float = 0.80) -> pd.DataFrame:
-    """C <-> per-SD HR table (Table 8): for each target concordance, the exact
+    """C <-> per-SD HR table: for each target concordance, the exact
     beta and HR, the censoring rate lam_c calibrated to `censor_rate`, the
     large-sample limit of Harrell's C under that censoring, and the
     closed-form events D and enrolled N for `power` to detect beta != 0 with
-    the two-sided Wald test (eq. 16).
+    the two-sided Wald test.
 
     With a `design`, its baseline hazard and censoring (fixed rate or
     accrual / follow-up / dropout) replace `censor_rate`. Values are unrounded."""
@@ -202,8 +202,7 @@ def _weighted_c_with_se(comp_w: np.ndarray, conc: np.ndarray) -> tuple[float, fl
 
 
 def harrell_c_with_se(time: np.ndarray, event: np.ndarray, eta: np.ndarray) -> tuple[float, float]:
-    """Harrell's C (higher eta = higher risk; no ties) with its asymptotic SE
-    (eq. 28)."""
+    """Harrell's C (higher eta = higher risk; no ties) with its asymptotic SE."""
     time, event, eta = np.asarray(time), np.asarray(event).astype(bool), np.asarray(eta)
     comp = event[:, None] & (time[:, None] < time[None, :])
     conc = eta[:, None] > eta[None, :]
@@ -350,7 +349,7 @@ def simulate_cindex_power(
     lambda0: float = DEFAULT_LAMBDA0,
     seed: int = 0,
 ) -> dict:
-    """One simulation cell of Appendix B: cohorts of size n with per-SD log-HR
+    """One simulation cell: cohorts of size n with per-SD log-HR
     beta and exponential censoring rate lam_c. Records
 
     * power_cox  : Cox Wald test of beta = 0 (`sides`, level alpha)
@@ -417,8 +416,8 @@ def sigma_c(beta: float, lam_c: float, method: str = "harrell", tau: float | Non
             seed: int = 99) -> float:
     """Asymptotic SD of sqrt(N) * C_hat, sigma_C = lim sqrt(N Var(C_hat)),
     estimated from the analytic SE in `n_sims` large cohorts of size n
-    (Appendix B.4 used the empirical SD at N = 3000; the analytic SE is far
-    less noisy and agrees within a few percent at this size). `n_sims`
+    (the analytic SE is far less noisy than the empirical SD at N = 3000, and
+    agrees with it within a few percent). `n_sims`
     defaults to 40, or 10 for Gonen-Heller's C, whose SE varies little
     between cohorts (~1.5% per draw) but costs ~10x more per cohort."""
     if n_sims is None:
@@ -445,7 +444,7 @@ def _se_draws(n, beta, lam_c, method, tau, lambda0, n_sims, seed):
     return np.asarray(ses)
 
 
-# --- Closed forms (eq. 29) ---------------------------------------------------
+# --- Closed forms -------------------------------------------------------------
 
 def benchmark_power(n: int, c_limit: float, c0: float, sigma: float, alpha: float = 0.05) -> float:
     """Approximate power of the one-sided test of H0: C <= c0 at level alpha."""
@@ -454,7 +453,7 @@ def benchmark_power(n: int, c_limit: float, c0: float, sigma: float, alpha: floa
 
 def benchmark_sample_size(c_limit: float, c0: float, sigma: float, power: float = 0.80,
                           alpha: float = 0.05) -> int:
-    """N for the one-sided benchmark test (eq. 29). Use the estimator's
+    """N for the one-sided benchmark test. Use the estimator's
     limit (`concordance_limit`), not the nominal C."""
     if c_limit <= c0:
         raise ValueError("the estimator's limit must exceed the benchmark c0")

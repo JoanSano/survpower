@@ -1,4 +1,4 @@
-"""Monte Carlo power engines (report Sections 4, 9, 10 and Appendix A).
+"""Monte Carlo power engines.
 
 Every engine: draws a cohort from a known data-generating process, applies
 exponential censoring calibrated to a target marginal rate, fits a Cox model
@@ -125,7 +125,7 @@ def simulate_power_with_adjustment(
     sides: int = 2,
 ) -> dict:
     """Power for X in a Cox model adjusted for p null covariates whose
-    multiple correlation with X is r2_target (Section 9). The true hazard
+    multiple correlation with X is r2_target. The true hazard
     depends only on X."""
     beta = np.log(hr)
     lam_c = calibrate_censoring_rate(beta, censor_rate, lambda0=lambda0, seed=seed + 999)
@@ -193,7 +193,7 @@ def simulate_continuous_vs_dichotomized(
     sides: int = 2,
 ) -> dict:
     """Continuous and median-dichotomized Cox analyses on the *same*
-    simulated cohorts (report Table 1). The dichotomized fit uses
+    simulated cohorts. The dichotomized fit uses
     G = 1{X > median(X)}; its mean coefficient gives the fitted group HR, to
     compare with the plug-in HR ** 1.5958, with the 95% CI a typical trial
     reports and the expected events per group. The groups are also compared
@@ -272,7 +272,7 @@ def simulate_epv_diagnostic(
     with_null: bool = True,
 ) -> dict:
     """Low events-per-variable diagnostics for X in a model adjusted for p
-    covariates (report Section 9.5, Table 3):
+    covariates:
 
     * bias of beta_hat on the log-HR scale, with its MCSE (the mean HR is
       inflated even for an unbiased beta_hat, by ~exp(Var/2));
@@ -339,9 +339,8 @@ def simulate_adjusted_vs_unadjusted(
     seed: int = 0,
     sides: int = 2,
 ) -> dict:
-    """What omitting prognostic covariates costs (report Section 10.4,
-    Table 5). Z_1..Z_p are independent of X (no confounding) with log-HRs
-    ~ N(0, sigma_z^2) redrawn per replicate. Both the adjusted model
+    """What omitting prognostic covariates costs. Z_1..Z_p are independent of X
+    (no confounding) with log-HRs ~ N(0, sigma_z^2) redrawn per replicate. Both the adjusted model
     (X, Z) and the unadjusted model (X only) are fitted to the same data.
     The unadjusted HR is attenuated (non-collapsibility) and loses power;
     adjustment for prognostic covariates is a power *gain*."""
@@ -394,7 +393,7 @@ def simulate_power_with_heterogeneous_adjustment(
     sides: int = 2,
 ) -> dict:
     """Power for X adjusted for p covariates that are themselves prognostic,
-    each with log-HR ~ N(0, sigma_z^2) redrawn every replicate (Section 10).
+    each with log-HR ~ N(0, sigma_z^2) redrawn every replicate.
     sigma_z = 0 recovers the null-adjustment case."""
     beta = np.log(hr)
     lam_c = calibrate_censoring_rate_heterogeneous(
@@ -445,7 +444,7 @@ def simulate_waning_effect(
 ) -> dict:
     """Waning effect (HR = hr_early before tau, 1 after) analysed with a
     constant-HR Cox model: naive power and bias, plus the Grambsch-Therneau
-    test's power to detect the violation (Appendix A.3)."""
+    test's power to detect the violation."""
     beta0 = np.log(hr_early)
     lam_c = calibrate_censoring_waning(beta0, tau, censor_rate, lambda0=lambda0, seed=seed + 999)
     rng = np.random.default_rng(seed)
@@ -485,7 +484,7 @@ def simulate_crossing_hazards(
     seed: int = 0,
 ) -> dict:
     """Crossing hazards (HR = hr_early before tau, hr_late after), analysed
-    with a constant-HR Cox model (Appendix A.4). Always two-sided: the effect
+    with a constant-HR Cox model. Always two-sided: the effect
     has no single direction."""
     beta_early, beta_late = np.log(hr_early), np.log(hr_late)
     lam_c = calibrate_censoring_crossing(beta_early, beta_late, tau, censor_rate,

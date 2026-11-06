@@ -117,7 +117,7 @@ class StandardNormal:
 @dataclass(frozen=True)
 class ExponentialPH:
     """T | X ~ Exponential(lambda0 * exp(log_hr * X)): a Cox PH model with a
-    constant baseline hazard (report Section 2)."""
+    constant baseline hazard."""
 
     log_hr: float = 0.0
     lambda0: float = DEFAULT_LAMBDA0
@@ -142,7 +142,7 @@ class ExponentialPH:
 @dataclass(frozen=True)
 class ExponentialCensoring:
     """C ~ Exponential(rate), independent of T. `calibrated` sets `rate` so
-    that the marginal P(C < T) equals `target_rate` (report Section 3); a
+    that the marginal P(C < T) equals `target_rate`; a
     given `rate` is used as is."""
 
     target_rate: float = 0.20

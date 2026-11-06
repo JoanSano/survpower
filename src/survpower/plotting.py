@@ -27,7 +27,7 @@ def plot_calibration_curves(results: list, target_power: float = 0.80,
                             n_sims_per_point: int = 300,
                             outpath: str = "calibration_curve.pdf") -> None:
     """Simulated power on the probit scale vs. sqrt(N) with the WLS
-    calibration line, one panel per HR (report Figure 1). `results` are the
+    calibration line, one panel per HR. `results` are the
     dicts from `estimate_required_n_by_simulation`."""
     plt.rcParams.update(_PLOT_STYLE)
     fig, axes = plt.subplots(1, len(results), figsize=(4.7 * len(results), 4.0))
@@ -62,8 +62,8 @@ def plot_calibration_curves(results: list, target_power: float = 0.80,
 
 
 def plot_collinearity_power(df: pd.DataFrame, outpath: str = "collinearity_power.pdf") -> None:
-    """Power vs. number of adjustment covariates p, by R^2, one panel per N
-    (report Figure 2). `df` from `run_collinearity_study(_both_cohorts)`."""
+    """Power vs. number of adjustment covariates p, by R^2, one panel per N.
+    `df` from `run_collinearity_study(_both_cohorts)`."""
     plt.rcParams.update(_PLOT_STYLE)
     r2_levels = sorted(df["r2_target"].unique())
     n_levels = sorted(df["n"].unique(), reverse=True)
@@ -92,7 +92,7 @@ def plot_collinearity_power(df: pd.DataFrame, outpath: str = "collinearity_power
 
 
 def plot_epv_bias(df: pd.DataFrame, true_hr: float, outpath: str = "epv_bias.pdf") -> None:
-    """Low-EPV stress test (report Figure 3): bias of beta_hat with 95% MC
+    """Low-EPV stress test: bias of beta_hat with 95% MC
     intervals; empirical SD of beta_hat vs. mean model SE; nominal power,
     type-I error and size-adjusted power. EPV on a twin axis. `df` from
     `run_epv_stress_test`."""
@@ -142,8 +142,8 @@ def plot_epv_bias(df: pd.DataFrame, true_hr: float, outpath: str = "epv_bias.pdf
 
 def plot_heterogeneous_adjustment(df: pd.DataFrame,
                                   outpath: str = "informative_adjustment.pdf") -> None:
-    """Power for X vs. sigma_z with 95% CIs, by p, against the closed form
-    (report Figure 4). `df` from `run_heterogeneous_adjustment_study`."""
+    """Power for X vs. sigma_z with 95% CIs, by p, against the closed form.
+    `df` from `run_heterogeneous_adjustment_study`."""
     plt.rcParams.update(_PLOT_STYLE)
     df = df.copy()
     df["se"] = np.sqrt(df["power"] * (1 - df["power"]) / df["n_sims"])
@@ -167,11 +167,11 @@ def plot_heterogeneous_adjustment(df: pd.DataFrame,
     plt.close(fig)
 
 
-# --- Appendix B ---------------------------------------------------------------
+# --- Concordance --------------------------------------------------------------
 
 def plot_concordance_mapping(mapping: pd.DataFrame | None = None, highlight: float = 0.70,
                              outpath: str = "fig5_concordance_mapping.pdf") -> None:
-    """Exact mapping between per-SD HR and population concordance (report Figure 5).
+    """Exact mapping between per-SD HR and population concordance.
     `mapping` (optional) has columns C and hr to mark."""
     plt.rcParams.update({**_PLOT_STYLE, "font.size": 9})
     fig, ax = plt.subplots(figsize=(5.2, 3.3))
@@ -198,7 +198,7 @@ def plot_concordance_mapping(mapping: pd.DataFrame | None = None, highlight: flo
 def plot_cindex_association_power(grid: pd.DataFrame,
                                   outpath: str = "fig6_association_power.pdf") -> None:
     """Power to detect association vs. N for several target C: Cox Wald test
-    and the test of C = 0.5 (report Figure 6). `grid` has columns C, n, power_cox,
+    and the test of C = 0.5. `grid` has columns C, n, power_cox,
     power_c05."""
     plt.rcParams.update({**_PLOT_STYLE, "font.size": 9})
     fig, axs = plt.subplots(1, 2, figsize=(7.2, 3.2), sharey=True)
@@ -220,8 +220,8 @@ def plot_cindex_association_power(grid: pd.DataFrame,
 
 def plot_benchmark_power(bench: pd.DataFrame, c_limit: float, sigma: float, alpha: float = 0.05,
                          outpath: str = "fig7_benchmark_power.pdf") -> None:
-    """Simulated power to show C > C0 vs. N against the closed form (eq. 29)
-    (report Figure 7). `bench` has columns c0, n, power_cc0."""
+    """Simulated power to show C > C0 vs. N against the closed form.
+    `bench` has columns c0, n, power_cc0."""
     plt.rcParams.update({**_PLOT_STYLE, "font.size": 9})
     fig, ax = plt.subplots(figsize=(5.2, 3.2))
     z = norm.ppf(1 - alpha)

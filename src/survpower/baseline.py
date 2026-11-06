@@ -1,4 +1,4 @@
-"""Baseline hazard calibration (report Section 2).
+"""Baseline hazard calibration.
 
 The data-generating process throughout is a constant ("exponential") baseline
 hazard h0(t) = lambda0, calibrated so the baseline (X = 0) median survival

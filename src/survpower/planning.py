@@ -64,7 +64,7 @@ from .scenario import Effect, ExponentialPH, scenario_for
 from .simulate import CONT_VS_DICH, continuous_vs_dichotomized, scenario_power, simulate_power_design
 
 #: Below this many evaluable patients the U-statistic SE of C is anti-
-#: conservative (Appendix B, Table 9).
+#: conservative.
 MIN_N_FOR_C_TESTS = 60
 
 
@@ -258,14 +258,14 @@ def sample_size(
     hr       : hazard ratio on the user's scale (per SD, or per raw unit with
                `design.biomarker_sd`); exactly one of `hr` / `c_index`.
     c_index  : the *population* concordance of the biomarker, Gonen & Heller's
-               K(beta) (eq. 25), converted with `concordance.hr_of_c`. It is not
+               K(beta), converted with `concordance.hr_of_c`. It is not
                the censoring-dependent limit of Harrell's C: ``c_index=0.70`` means
                "the population concordance is 0.70".
     power    : target power.
     design   : `StudyDesign` (default `StudyDesign()`): alpha, sides, censoring
                or accrual calendar, non-evaluable fraction, adjustment R^2, engine
                and replicate counts.
-    method   : "closed_form"  Hsieh & Lavori (2000), report Eq. 16:
+    method   : "closed_form"  Hsieh & Lavori (2000):
                               D = (z_{1-alpha/sides} + z_power)^2 / (beta^2 (1 - R^2)),
                               N = ceil(D / P(event)). Optimistic at large effects.
                "calibrated"   simulation calibration on the probit scale
@@ -511,7 +511,7 @@ def _cindex_context(design: StudyDesign, c: float) -> dict:
     design.require_default_models("concordance questions")
     if design.n_covariates > 0:
         raise ValueError("concordance questions are univariate; for a biomarker added to a "
-                         "clinical model, power its adjusted hazard ratio instead (Appendix B.5)")
+                         "clinical model, power its adjusted hazard ratio instead")
     beta = beta_of_c(c)
     lam_c = design.lambda_c_for(np.exp(beta))
     tau = None
@@ -536,7 +536,7 @@ def run_cindex_benchmark_mode(design: StudyDesign, cs: list, c0s: list,
                               ns: list | None = None, powers: list | None = None) -> pd.DataFrame:
     """Power (given N) or N (given target power) to show that the biomarker's
     concordance exceeds a benchmark: one-sided test of H0: C <= C0 at level
-    alpha, using the chosen estimator (Appendix B.4). The closed form uses the
+    alpha, using the chosen estimator. The closed form uses the
     estimator's limit under the design (not the nominal C); the N is then
     simulation-calibrated."""
     powers = powers or [0.80]
@@ -586,7 +586,7 @@ def run_cindex_benchmark_mode(design: StudyDesign, cs: list, c0s: list,
                     n_eval = out["n_calibrated"]
                     if n_eval < MIN_N_FOR_C_TESTS:
                         warnings.warn(f"N = {n_eval} is below {MIN_N_FOR_C_TESTS}: the SE of C is "
-                                      "anti-conservative there (Appendix B, Table 9)")
+                                      "anti-conservative there")
                     n_enrol = design.enrolled(n_eval)
                     rows.append(dict(
                         base, target_power=target, n_closed_form_evaluable=n0,

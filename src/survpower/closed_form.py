@@ -2,13 +2,13 @@
 
 * Continuous covariate: Schoenfeld (1983), with the (1 - R^2) variance
   inflation of Hsieh, Bloch & Larsen (1998) extended to the Cox model with
-  non-binary covariates by Hsieh & Lavori (2000) (report Section 8.1).
+  non-binary covariates by Hsieh & Lavori (2000).
   Information for beta is ~ D * sigma_x^2 * (1 - R^2), where D is the number
   of events and R^2 the multiple correlation of X with the adjustment
   covariates. Slightly optimistic, and badly so at large effects -- use the
   simulation-calibrated versions in `survpower.calibration`.
 * Dichotomized (median-split) covariate: the Freedman (1982) and Schoenfeld
-  (1983) two-group formulas (report Sections 5-6). lifelines'
+  (1983) two-group formulas. lifelines'
   `power_under_cph` implements Freedman's. With the plug-in group HR,
   Schoenfeld's is algebraically the asymptotic-relative-efficiency
   prediction: a median split keeps 2/pi of the information.
@@ -39,7 +39,7 @@ def sample_size_continuous_cph(
     var_x: float | None = None,
 ) -> tuple[float, int]:
     """Required events D and sample size N for a continuous Cox covariate
-    (Hsieh & Lavori 2000; revised report Eq. 16):
+    (Hsieh & Lavori 2000):
 
         D = (z_{1-alpha/sides} + z_{power})^2 / (beta^2 var_x (1 - R^2)),
         N = ceil(D / event_prob).
@@ -99,7 +99,7 @@ def theoretical_power_with_r2(
 def group_hr_from_persd_hr(hr_per_sd: float) -> float:
     """Plug-in group-level HR for a median split of X ~ N(0, 1):
     HR_group ~ HR_per_SD ** 1.5958. Optimistic (non-collapsibility attenuates
-    the HR a real dichotomized fit estimates), see report Section 5."""
+    the HR a real dichotomized fit estimates)."""
     return float(np.exp(np.log(hr_per_sd) * MEDIAN_SPLIT_SEPARATION))
 
 
@@ -172,7 +172,7 @@ def dichotomized_power(n: int, hr_per_sd: float, censor_rate: float,
                        alpha: float = 0.05, sides: int = 2, method: str = "freedman") -> float:
     """Closed-form power of a median-split analysis with n subjects
     (Freedman 1982, as in lifelines, or Schoenfeld 1983; they differ by at
-    most ~0.003 at the HRs of the report, Freedman's always slightly lower)."""
+    most ~0.003 at per-SD HRs of 1.10 and 1.15, Freedman's always slightly lower)."""
     ghr, p_con, p_exp = dichotomized_design(hr_per_sd, censor_rate)
     a2 = _two_sided_alpha(alpha, sides)
     if method == "schoenfeld":

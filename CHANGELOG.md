@@ -7,6 +7,9 @@
   page is gone. `survpower report` still names the `v0.2.0` tag. Numbers that cited the
   report are recomputed with the package, and tutorial 01 now checks its simulated power
   against the closed forms (#70).
+- Docstrings, comments and two messages in `survpower` (the concordance-question
+  `ValueError` and the small-N warning) no longer cite the report's sections, tables,
+  figures or equation numbers (#70).
 
 ### Fixed
 - `docs/concepts/methods.md` no longer describes regression tests that were removed in

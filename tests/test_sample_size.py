@@ -9,7 +9,7 @@ from survpower.simulate import simulate_power
 
 
 @pytest.mark.parametrize("hr, events, n", [(1.10, 864.0, 1081), (1.15, 401.8, 503)])
-def test_closed_form_matches_report_section_8_2(hr, events, n):
+def test_closed_form_reference_values(hr, events, n):
     r = sample_size(hr=hr, method="closed_form")
     assert isinstance(r, SampleSizeResult)
     assert (r.events, r.n_evaluable, r.n_enrolled, r.method) == (events, n, n, "closed_form")
@@ -22,7 +22,7 @@ def test_c_index_equals_its_hazard_ratio_exactly(c):
                                                                        method="closed_form")
 
 
-def test_c_index_070_report_table_8():
+def test_c_index_070_closed_form():
     r = sample_size(c_index=0.70, method="closed_form")
     assert (r.events, r.n_evaluable) == (11.0, 14)
     assert r.c_index == pytest.approx(0.70, abs=1e-9)
@@ -80,7 +80,7 @@ def test_calibrated_has_interval_and_mcse():
 @pytest.mark.slow
 def test_closed_form_fails_at_large_effects():
     """C = 0.70: the closed form gives N = 14, where simulated power is well
-    below 0.70 (the report found 0.59-0.64); "auto" finds N ~ 22 (report)."""
+    below 0.70; "auto" finds N of 20-24."""
     n0 = sample_size(c_index=0.70, method="closed_form").n_evaluable
     assert n0 == 14
     assert simulate_power(n0, hr_of_c(0.70), 0.20, n_sims=4000, seed=1)[0] < 0.70

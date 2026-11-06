@@ -5,8 +5,8 @@ Two engines are available for univariate simulations:
 * ``"fast"`` -- `cox_fit_1d`, a vectorized Newton-Raphson partial-likelihood
   solver for one continuous covariate without tied times (agrees with
   lifelines to ~1e-7; 10-50x faster). Default for univariate power runs.
-* ``"lifelines"`` -- `lifelines.CoxPHFitter`. Used for multivariable models,
-  for the Grambsch-Therneau PH test, and to reproduce the report exactly.
+* ``"lifelines"`` -- `lifelines.CoxPHFitter`. Used for multivariable models
+  and for the Grambsch-Therneau PH test.
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ def wald_rejects(z: float, beta: float, alpha: float, sides: int = 2) -> bool:
 
 def rejects(cph: CoxPHFitter, beta: float, alpha: float, sides: int = 2) -> bool:
     """Wald rejection of H0: beta_X = 0 from a fitted lifelines model. Two-sided
-    uses lifelines' p-value directly (as the report does)."""
+    uses lifelines' p-value directly."""
     if sides == 2:
         return bool(cph.summary.loc["X", "p"] < alpha)
     return wald_rejects(cph.summary.loc["X", "z"], beta, alpha, sides)

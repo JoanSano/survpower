@@ -1,12 +1,11 @@
-"""Simulation-calibrated sample size and minimum detectable effect
-(report Section 8.3, Appendix B.3).
+"""Simulation-calibrated sample size and minimum detectable effect.
 
 Closed forms anchor a small grid; simulated power at each grid point is fitted
 on the probit scale (Phi^-1(power) = a*x + b, with x = sqrt(N) or log-HR) and
 inverted for the target power, then confirmed by an independent, larger run.
 
 At very small N (a few dozen subjects, e.g. a large concordance index) the
-probit-linear form breaks down (Appendix B.3), so below `scan_below` the
+probit-linear form breaks down, so below `scan_below` the
 calibrated N is replaced by a direct scan over integers: the smallest N whose
 simulated power reaches the target.
 """
@@ -42,11 +41,10 @@ def fit_probit_line(x, powers, n_sims_per_point: int) -> tuple[float, float]:
 def bootstrap_probit_inverse(x, powers, n_sims_per_point: int, target_power: float,
                              transform: Callable = np.square, n_boot: int = 4000,
                              seed: int = 0, level: float = 0.95) -> tuple[float, float]:
-    """Monte Carlo uncertainty of a probit-calibrated solution (report
-    Section 8.3, step 6). Binomial counts at each grid point are resampled
-    (parametric bootstrap), the WLS line refitted and inverted for the
-    target; returns the percentile interval of transform(x*) -- x* squared
-    for N (x = sqrt N), exp(x*) for an HR (x = log HR)."""
+    """Monte Carlo uncertainty of a probit-calibrated solution. Binomial counts
+    at each grid point are resampled (parametric bootstrap), the WLS line
+    refitted and inverted for the target; returns the percentile interval of
+    transform(x*) -- x* squared for N (x = sqrt N), exp(x*) for an HR (x = log HR)."""
     rng = np.random.default_rng(seed)
     p = np.asarray(powers, dtype=float)
     z = norm.ppf(target_power)

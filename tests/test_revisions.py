@@ -1,4 +1,4 @@
-"""Checks for the analyses added with the revised report (November 2026)."""
+"""Checks for the dichotomized, low-EPV, omitted-covariate and calibration analyses."""
 
 import numpy as np
 import pytest
@@ -22,7 +22,7 @@ from survpower.simulate import (
     (1200, 1.10, 0.652, 0.654), (1200, 1.15, 0.931, 0.933),
     (250, 1.10, 0.188, 0.188), (250, 1.15, 0.348, 0.351),
 ])
-def test_table1_closed_forms(n, hr, freedman, schoenfeld):
+def test_dichotomized_closed_form_reference_values(n, hr, freedman, schoenfeld):
     assert dichotomized_power(n, hr, 0.2, method="freedman") == pytest.approx(freedman, abs=6e-4)
     assert dichotomized_power(n, hr, 0.2, method="schoenfeld") == pytest.approx(schoenfeld, abs=6e-4)
 

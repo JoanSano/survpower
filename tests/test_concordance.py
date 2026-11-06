@@ -39,11 +39,11 @@ def _cohort(n=400, beta=0.8, lam_c=0.01, seed=0):
 
 
 @pytest.mark.parametrize("c, hr", [(0.55, 1.20), (0.60, 1.45), (0.65, 1.80), (0.70, 2.33), (0.75, 3.24)])
-def test_table_b1_mapping(c, hr):
+def test_beta_of_c_reference_values(c, hr):
     assert np.exp(beta_of_c(c)) == pytest.approx(hr, abs=0.01)
 
 
-def test_report_hrs_as_concordance():
+def test_small_hrs_as_concordance():
     assert c_of_beta(np.log(1.10)) == pytest.approx(0.527, abs=5e-4)
     assert c_of_beta(np.log(1.15)) == pytest.approx(0.539, abs=5e-4)
 
@@ -59,7 +59,7 @@ def test_rule_of_thumb_within_3_percent():
         assert beta_of_c_approx(c) == pytest.approx(beta_of_c(c), rel=0.03)
 
 
-def test_harrell_limit_table_b1():
+def test_harrell_limit_reference_value():
     b = beta_of_c(0.70)
     lam_c = calibrate_censoring_rate(b, 0.2)
     assert lam_c == pytest.approx(0.00954, abs=2e-5)
@@ -111,7 +111,7 @@ def test_fast_cox_matches_lifelines():
 
 
 def test_benchmark_and_precision_closed_forms():
-    # Table B3 / B.4 (the report used the unrounded sigma_C ~ 0.323): +/-1 subject
+    # reference values use the unrounded sigma_C ~ 0.323: +/-1 subject
     assert abs(benchmark_sample_size(0.7032, 0.65, 0.323) - 228) <= 1
     assert abs(benchmark_sample_size(0.70, 0.65, 0.323) - 258) <= 1
     assert abs(precision_sample_size(0.323, 0.05) - 160) <= 1
@@ -196,7 +196,7 @@ def test_gonen_heller_univariate_uses_fast_fit_and_is_orientation_free():
         gonen_heller_c_with_se(np.ones((10, 2)), [1.0])
 
 
-def test_mapping_table_matches_table8():
+def test_mapping_table_reference_values():
     df = mapping_table()
     assert np.round(df["beta"], 3).tolist() == [0.179, 0.370, 0.585, 0.844, 1.177]
     assert df["hr"].round(2).tolist() == [1.20, 1.45, 1.80, 2.33, 3.24]

@@ -7,7 +7,7 @@ Quick start::
     from survpower import StudyDesign, sample_size
     print(sample_size(hr=1.15, power=0.80).summary)       # or c_index=0.60
 
-or from the shell: ``survpower --hr 1.15``.
+or from the shell: ``survpower sample-size --hr 1.15``.
 """
 
 from .baseline import (

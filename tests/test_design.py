@@ -115,13 +115,12 @@ def test_every_field_has_a_cli_flag():
     (["--r2", "1.5", "--n-covariates", "2"], "--r2 must be in [0, 1)"),
     (["--biomarker-sd", "0"], "--biomarker-sd must be positive"),
     (["--median-os", "0"], "--median-os must be positive"),
-    (["--c-tau", "-1"], "--c-tau must be positive"),
     (["--n-sims", "0"], "--n-sims must be a positive integer"),
     (["--n-sims-grid", "0"], "--n-sims-grid must be a positive integer"),
 ])
 def test_cli_reports_design_errors_in_its_own_terms(args, message, capsys):
     with pytest.raises(SystemExit) as exc:
-        main(["--hr", "1.2", *args])
+        main(["sample-size", "--hr", "1.2", *args])
     assert exc.value.code == 2  # argparse's usage error
     err = capsys.readouterr().err
     assert message in err and "usage:" in err
@@ -129,5 +128,22 @@ def test_cli_reports_design_errors_in_its_own_terms(args, message, capsys):
 
 def test_cli_quick_leaves_explicit_invalid_counts_to_be_rejected(capsys):
     with pytest.raises(SystemExit):
-        main(["--hr", "1.2", "--quick", "--n-sims", "0"])
+        main(["sample-size", "--hr", "1.2", "--quick", "--n-sims", "0"])
     assert "--n-sims must be a positive integer" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command, flags, offered", [
+    (["power", "--hr", "1.2", "--n", "100"], ["--median-os", "0"], "--median-os"),
+    (["sample-size", "--hr", "1.2"], ["--dropout", "0.1"], "--dropout"),
+    (["detectable-effect", "--n", "100"], ["--n-covariates", "-1"], "--n-covariates"),
+    (["benchmark", "--c-index", "0.7", "--c0", "0.6"], ["--alpha", "2"], "--alpha"),
+    (["benchmark", "--c-index", "0.7", "--c0", "0.6"], ["--n-sims-grid", "0"], "--n-sims-grid"),
+    (["precision", "--c-index", "0.7", "--n", "100"], ["--c-estimator", "uno", "--c-tau", "-1"], "--c-tau"),
+    (["precision", "--c-index", "0.7", "--n", "100"], ["--censor-rate", "2"], "--censor-rate"),
+    (["precision", "--c-index", "0.7", "--n", "100"], ["--n-sims", "0"], "--n-sims"),
+])
+def test_design_errors_name_the_flag_on_every_command(command, flags, offered, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main([*command, *flags])
+    assert exc.value.code == 2
+    assert f"error: {offered}" in capsys.readouterr().err

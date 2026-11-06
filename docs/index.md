@@ -79,11 +79,11 @@ Check the install with `survpower --help`.
 ## Thirty-second tour
 
 ```bash
-survpower --hr 1.15                                   # N for 80% power
-survpower --hr 1.15 --n 250 1200                      # power at two cohort sizes
-survpower --n 250                                     # minimum detectable HR / C
-survpower --c-index 0.70 --c0 0.65                    # N to show C > 0.65
-survpower --c-index 0.70 --precision 0.05             # N for a ±0.05 CI on C
+survpower sample-size --hr 1.15                       # N for 80% power
+survpower power --hr 1.15 --n 250 1200                # power at two cohort sizes
+survpower detectable-effect --n 250                   # minimum detectable HR / C
+survpower benchmark --c-index 0.70 --c0 0.65          # N to show C > 0.65
+survpower precision --c-index 0.70 --half-width 0.05  # N for a ±0.05 CI on C
 ```
 
 Next: [Quickstart recipes](quickstart.md) · [CLI reference](cli.md) ·

@@ -13,7 +13,7 @@ is the multiple correlation of the biomarker with the adjustment set (Hsieh,
 Bloch & Larsen, 1998; extended to the Cox model by Hsieh & Lavori, 2000):
 
 ```bash
-survpower --hr 1.2 --n-covariates 5 --r2 0.3     # ~43% more events than unadjusted
+survpower sample-size --hr 1.2 --n-covariates 5 --r2 0.3     # ~43% more events than unadjusted
 ```
 
 `--r2` can be estimated from pilot or registry data **without knowing the
@@ -38,7 +38,7 @@ independent prognostic covariates), unadjusted power fell from 0.82 to 0.28 as
 the covariates' effects grew, while adjusted power stayed at about 0.83.
 
 ```bash
-survpower --hr 1.10 --n 1200 --sensitivity omitted
+survpower power --hr 1.10 --n 1200 --sensitivity omitted
 ```
 
 The closed form refers to the **conditional** HR of the adjusted model. Plan

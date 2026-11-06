@@ -77,12 +77,17 @@ class EventTimeModel(Protocol):
 
 @runtime_checkable
 class CensoringModel(Protocol):
+    """Censoring times for a cohort. `draw` also receives the cohort's latent
+    event times, so that a model can depend on them (an analysis cut at a target
+    number of events); independent censoring ignores them."""
+
     def calibrated(self, sampler: Sampler, seed: int) -> "CensoringModel":
         """A frozen copy whose parameters are fitted to the event times that
         `sampler(n, rng)` draws (the scenario's covariate and event-time models)."""
         ...
 
-    def draw(self, cov: Covariates, rng: np.random.Generator) -> np.ndarray: ...
+    def draw(self, cov: Covariates, event_times: np.ndarray,
+             rng: np.random.Generator) -> np.ndarray: ...
 
 
 @runtime_checkable
@@ -151,7 +156,8 @@ class ExponentialCensoring:
                                         self.target_rate, seed=seed, n_probe=self.n_probe)
         return replace(self, rate=lam_c)
 
-    def draw(self, cov: Covariates, rng: np.random.Generator) -> np.ndarray:
+    def draw(self, cov: Covariates, event_times: np.ndarray,
+             rng: np.random.Generator) -> np.ndarray:
         if self.rate is None:
             raise ValueError("ExponentialCensoring has no rate; call calibrated() first")
         return rng.exponential(scale=1.0 / self.rate, size=cov.n)
@@ -252,6 +258,11 @@ class Scenario:
         """The true log-HR of X, if the event-time model has one."""
         return getattr(self.event_times, "log_hr", None)
 
+    @property
+    def has_closed_form(self) -> bool:
+        """Whether the closed-form power and sample-size formulas apply: PH only, for now."""
+        return bool(self.event_times.is_ph)
+
     def sample_latent(self, n: int, rng: np.random.Generator) -> tuple[np.ndarray, Covariates]:
         """Covariates and latent event times (no censoring): the probe sampler."""
         cov = self.covariates.draw(n, rng)
@@ -264,8 +275,58 @@ class Scenario:
     def draw(self, n: int, rng: np.random.Generator):
         """One observed cohort: (time, event, covariates)."""
         T, cov = self.sample_latent(n, rng)
-        C = self.censoring.draw(cov, rng)
+        C = self.censoring.draw(cov, T, rng)
         return np.minimum(T, C), (T <= C).astype(int), cov
+
+
+#: The effect scales a model can be parametrized by. #63 adds "time_ratio".
+EFFECT_SCALES = ("hr",)
+
+
+@dataclass(frozen=True)
+class Effect:
+    """The size of the biomarker's effect: a scale and its value per SD."""
+
+    scale: str
+    per_sd: float
+
+    def __post_init__(self):
+        if self.scale not in EFFECT_SCALES:
+            raise ValueError(f"scale must be one of {EFFECT_SCALES}")
+        if not 0 < self.per_sd < np.inf:
+            raise ValueError("per_sd must be positive and finite")
+
+    @classmethod
+    def hr(cls, per_sd: float) -> "Effect":
+        """A hazard ratio per SD of the biomarker."""
+        return cls("hr", per_sd)
+
+
+def scenario_for(design, effect: Effect, analyses: tuple | None = None,
+                 censor_rate: float | None = None) -> Scenario:
+    """The scenario that a `StudyDesign` and an `Effect` describe: the one place
+    that turns a design into models. Unadjusted analyses only; the other paths
+    are guarded by `StudyDesign.require_default_models`.
+
+    analyses    : default, the design's Wald test (`CoxWald(engine=design.engine)`).
+    censor_rate : the target marginal censoring, for a path that has solved for
+                  it; default, `design.censor_rate_for(effect.per_sd)`.
+
+    A design option that this function does not turn into a model raises, so
+    that it can never fall back to the exponential model without saying so.
+    """
+    if design.n_covariates > 0:
+        raise ValueError("scenario_for covers unadjusted analyses; this design has "
+                         f"n_covariates = {design.n_covariates}")
+    design.require_default_models("scenario_for")
+    if effect.scale != "hr":
+        raise ValueError(f"no event-time model for an effect on the {effect.scale} scale")
+    if censor_rate is None:
+        censor_rate = design.censor_rate_for(effect.per_sd)
+    return Scenario(StandardNormal(),
+                    ExponentialPH(log_hr=np.log(effect.per_sd), lambda0=design.lambda0),
+                    ExponentialCensoring(target_rate=censor_rate),
+                    analyses if analyses is not None else (CoxWald(engine=design.engine),))
 
 
 @dataclass

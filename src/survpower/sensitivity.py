@@ -180,6 +180,7 @@ def run_sensitivity(
     writes figures to `outdir` if `plots`."""
     from . import plotting  # matplotlib only when needed
 
+    design.require_default_models("sensitivity analyses")
     cr = design.censor_rate_for(hr)
     r2 = design.r2 if design.r2 > 0 else 0.3
     common = dict(n=n, hr=hr, censor_rate=cr, lambda0=design.lambda0, n_sims=n_sims,

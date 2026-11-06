@@ -60,11 +60,36 @@ from .concordance import (
 )
 from .design import StudyDesign
 from .results import Estimate, proportion_mcse
-from .simulate import simulate_continuous_vs_dichotomized, simulate_power_design
+from .scenario import Effect, ExponentialPH, scenario_for
+from .simulate import CONT_VS_DICH, continuous_vs_dichotomized, scenario_power, simulate_power_design
 
 #: Below this many evaluable patients the U-statistic SE of C is anti-
 #: conservative (Appendix B, Table 9).
 MIN_N_FOR_C_TESTS = 60
+
+
+def _simulated_power(design: StudyDesign, hr_per_sd: float, n: int, censor_rate: float,
+                     n_sims: int, seed: int) -> tuple[float, float]:
+    """(power, mean_events) of the design's Wald test. Unadjusted designs run the
+    scenario they describe; adjusted ones have their own exponential loop."""
+    if design.n_covariates == 0:
+        return scenario_power(scenario_for(design, Effect.hr(hr_per_sd), censor_rate=censor_rate),
+                              n, n_sims, design.alpha, seed, design.sides)
+    design.require_default_models("adjusted analyses")
+    return simulate_power_design(
+        n=n, hr=hr_per_sd, censor_rate=censor_rate, p=design.n_covariates, r2_target=design.r2,
+        lambda0=design.lambda0, n_sims=n_sims, alpha=design.alpha, sides=design.sides, seed=seed,
+        engine=design.engine,
+    )
+
+
+def _has_closed_form(design: StudyDesign, hr_per_sd: float, censor_rate: float) -> bool:
+    """Whether the closed-form formulas describe this design's model. Adjusted
+    designs are always exponential PH, by the guard."""
+    if design.n_covariates > 0:
+        design.require_default_models("adjusted analyses")
+        return True
+    return scenario_for(design, Effect.hr(hr_per_sd), censor_rate=censor_rate).has_closed_form
 
 
 def median_split_summary(design: StudyDesign, n_eval: int, hr_per_sd: float, censor_rate: float,
@@ -74,13 +99,16 @@ def median_split_summary(design: StudyDesign, n_eval: int, hr_per_sd: float, cen
     the 95% CI a typical trial reports, the optimistic plug-in HR, expected
     events and model-based median OS per group. Simulated on the same kind of
     cohorts with the fast engine (pass `sim` to reuse a run), Schoenfeld closed
-    form otherwise."""
-    plugin = group_hr_from_persd_hr(hr_per_sd)
-    med_low, med_high = median_split_median_survival(hr_per_sd, design.lambda0)
-    if design.engine == "fast":
-        r = sim or simulate_continuous_vs_dichotomized(
-            n=n_eval, hr=hr_per_sd, censor_rate=censor_rate, lambda0=design.lambda0,
-            n_sims=design.n_sims, alpha=design.alpha, seed=seed, sides=design.sides)
+    form otherwise. A model with no closed form is always simulated, without the
+    plug-in HR; the median OS is only known for the exponential model."""
+    scenario = scenario_for(design, Effect.hr(hr_per_sd), CONT_VS_DICH, censor_rate=censor_rate)
+    plugin = group_hr_from_persd_hr(hr_per_sd) if scenario.has_closed_form else np.nan
+    med_low, med_high = np.nan, np.nan
+    if isinstance(scenario.event_times, ExponentialPH):
+        med_low, med_high = median_split_median_survival(hr_per_sd, design.lambda0)
+    if design.engine == "fast" or not scenario.has_closed_form:
+        r = sim or continuous_vs_dichotomized(scenario, n_eval, design.n_sims, design.alpha, seed,
+                                              design.sides)
         out = dict(split_power=r["power_dich"], split_hr=r["group_hr_fitted"],
                    split_hr_ci_low=r["group_hr_ci_low"], split_hr_ci_high=r["group_hr_ci_high"],
                    split_events_high=r["events_high"], split_events_low=r["events_low"],
@@ -100,14 +128,20 @@ def median_split_summary(design: StudyDesign, n_eval: int, hr_per_sd: float, cen
 def median_split_text(ms: dict) -> str:
     """The median-split clause of a summary: '... would have X% power; ...'."""
     simulated = ms["split_source"] == "simulated"
+    if np.isnan(ms["split_hr_plugin"]):
+        plugin_txt = ""
+    elif simulated:
+        plugin_txt = f"; plug-in HR per SD^1.596 = {ms['split_hr_plugin']:.2f}"
+    else:
+        plugin_txt = "; plug-in HR per SD^1.596, Schoenfeld closed form"
     hr_txt = (f"a high-vs-low HR of {ms['split_hr']:.2f} (typical 95% CI "
-              f"{ms['split_hr_ci_low']:.2f} to {ms['split_hr_ci_high']:.2f}"
-              + (f"; plug-in HR per SD^1.596 = {ms['split_hr_plugin']:.2f})" if simulated
-                 else "; plug-in HR per SD^1.596, Schoenfeld closed form)"))
+              f"{ms['split_hr_ci_low']:.2f} to {ms['split_hr_ci_high']:.2f}{plugin_txt})")
+    median_txt = ("" if np.isnan(ms["split_median_os_high"]) else
+                  f" and median OS {ms['split_median_os_high']:.1f} vs "
+                  f"{ms['split_median_os_low']:.1f} months")
     return (f"{ms['split_power']:.0%} power and would estimate {hr_txt}, with "
-            f"~{ms['split_events_high']:.0f} vs ~{ms['split_events_low']:.0f} events and median "
-            f"OS {ms['split_median_os_high']:.1f} vs {ms['split_median_os_low']:.1f} months in "
-            f"the high vs low group")
+            f"~{ms['split_events_high']:.0f} vs ~{ms['split_events_low']:.0f} events{median_txt} "
+            f"in the high vs low group")
 
 
 def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
@@ -125,25 +159,24 @@ def run_power_mode(design: StudyDesign, hrs: list, ns: list) -> pd.DataFrame:
             univariate_fast = design.n_covariates == 0 and design.engine == "fast"
             dich_sim = dich_lr_sim = np.nan
             if univariate_fast:  # continuous and median-split fits on the same cohorts
-                r = simulate_continuous_vs_dichotomized(
-                    n=n_eval, hr=hr_sd, censor_rate=cr, lambda0=design.lambda0,
-                    n_sims=design.n_sims, alpha=design.alpha, seed=seed, sides=design.sides)
+                r = continuous_vs_dichotomized(
+                    scenario_for(design, Effect.hr(hr_sd), CONT_VS_DICH, censor_rate=cr),
+                    n_eval, design.n_sims, design.alpha, seed, design.sides)
                 power, mean_ev, dich_sim = r["power_cont"], r["mean_events"], r["power_dich"]
                 dich_lr_sim = r["power_dich_logrank"]
             else:
-                power, mean_ev = simulate_power_design(
-                    n=n_eval, hr=hr_sd, censor_rate=cr, p=design.n_covariates,
-                    r2_target=design.r2, lambda0=design.lambda0, n_sims=design.n_sims,
-                    alpha=design.alpha, sides=design.sides, seed=seed, engine=design.engine,
-                )
+                power, mean_ev = _simulated_power(design, hr_sd, n_eval, cr, design.n_sims, seed)
             lo, hi = wilson_ci(power, design.n_sims)
-            closed = theoretical_power_with_r2(
-                n=n_eval, hr=hr_sd, censor_rate=cr, r2_target=design.r2_eff,
-                alpha=design.alpha, sides=design.sides,
-            )
+            has_closed = _has_closed_form(design, hr_sd, cr)
+            closed = np.nan
+            if has_closed:
+                closed = theoretical_power_with_r2(
+                    n=n_eval, hr=hr_sd, censor_rate=cr, r2_target=design.r2_eff,
+                    alpha=design.alpha, sides=design.sides,
+                )
             univariate = design.n_covariates == 0
             dich = {m: (dichotomized_power(n_eval, hr_sd, cr, design.alpha, design.sides, method=m)
-                        if univariate else np.nan) for m in ("freedman", "schoenfeld")}
+                        if univariate and has_closed else np.nan) for m in ("freedman", "schoenfeld")}
             split = (median_split_summary(design, n_eval, hr_sd, cr, seed,
                                           sim=r if univariate_fast else None)
                      if univariate else {})
@@ -185,7 +218,10 @@ class SampleSizeResult:
     events                  : expected events at that N (closed form: required D)
     method                  : what produced N: "closed_form", "probit" (simulation-
                               calibrated) or "scan" (direct integer scan)
-    n_closed_form           : the closed-form N (evaluable), for comparison
+    n_closed_form           : the closed-form N (evaluable), for comparison. A model with
+                              no closed form reports the proportional-hazards
+                              approximation that started the calibration, and
+                              `details["start"]` is "ph_approximation"
     n_ci                    : 95% Monte Carlo interval of N (probit calibration only)
     confirmed_power         : simulated power at N with its MCSE (simulation methods)
     hr_per_sd, c_index      : the effect, on both scales
@@ -254,8 +290,12 @@ def sample_size(
     hr_sd = hr_of_c(c_index) if c_index is not None else design.to_per_sd(hr)
     c = c_of_beta(np.log(hr_sd))
     cr = design.censor_rate_for(hr_sd)
+    has_closed = _has_closed_form(design, hr_sd, cr)
 
     if method == "closed_form":
+        if not has_closed:
+            raise ValueError("this design's event-time model has no closed form; "
+                             "use method='calibrated' or 'auto'")
         D, n0 = sample_size_continuous_cph(hr_sd, power, alpha=design.alpha, event_prob=1 - cr,
                                            rho_sq=design.r2_eff, sides=design.sides)
         n_enrol = design.enrolled(n0)
@@ -267,7 +307,7 @@ def sample_size(
             n_evaluable=n0, n_enrolled=n_enrol, events=round(D, 1), method="closed_form",
             n_closed_form=n0, events_closed_form=round(D, 1), n_ci=None, confirmed_power=None,
             hr_per_sd=hr_sd, c_index=c, target_power=power, censor_rate=cr, summary=summary,
-            details=dict(events_closed_form=D, n_closed_form=n0))
+            details=dict(events_closed_form=D, n_closed_form=n0, start="closed_form"))
 
     auto = method == "auto"
     out = estimate_required_n_by_simulation(
@@ -276,19 +316,22 @@ def sample_size(
         confirm_n_sims=design.n_sims, seed=seed,
         p=design.n_covariates, r2_target=design.r2, sides=design.sides,
         engine=design.engine, scan_below=100 if auto else 0, scan_if_flat=auto,
+        power_fn=lambda n, n_sims, s: _simulated_power(design, hr_sd, n, cr, n_sims, s),
     )
+    out["start"] = "closed_form" if has_closed else "ph_approximation"
     n_enrol = design.enrolled(out["n_calibrated"])
     lo, hi = out["n_ci_low"], out["n_ci_high"]
     has_ci = bool(np.isfinite(lo))
     ci_txt = (f"; 95% Monte Carlo interval {int(lo)}-{int(hi)} evaluable" if has_ci else "")
-    unresolved = has_ci and lo <= out["n_closed_form"] <= hi
+    unresolved = has_closed and has_ci and lo <= out["n_closed_form"] <= hi
+    start_label = "closed-form N" if has_closed else "PH approximation used as the starting N"
     summary = (
         f"To detect a hazard ratio of {design.hr_label(hr_sd)} with {power:.0%} power "
         f"({design.test_label()}{design.adjustment_label()}), about "
         f"{out['confirmed_mean_events']:.0f} events are required ({cr:.0%} censored): "
         f"N = {out['n_calibrated']} evaluable / {n_enrol} enrolled patients "
         f"(simulation-calibrated{ci_txt}; confirmed power "
-        f"{out['confirmed_power']:.0%}; closed-form N = "
+        f"{out['confirmed_power']:.0%}; {start_label} = "
         f"{design.enrolled(out['n_closed_form'])} enrolled)."
         + (" The interval contains the closed-form N, so the calibration does not "
            "resolve a difference from it; increase --n-sims-grid to do so."
@@ -323,7 +366,9 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
             n_enrol = res.n_enrolled
             split = {}
             n_dich = np.nan
-            if design.n_covariates == 0:
+            has_closed = out["start"] == "closed_form"
+            show_split = design.n_covariates == 0 and has_closed
+            if show_split:
                 n_dich_eval = dichotomized_sample_size(pw, hr_sd, cr, design.alpha, design.sides,
                                                        method="schoenfeld")
                 n_dich = design.enrolled(n_dich_eval)
@@ -333,8 +378,8 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
             rows.append(dict(
                 hr=round(hr, 4), hr_per_sd=round(hr_sd, 4), c_index=round(c_of_beta(np.log(hr_sd)), 4),
                 target_power=pw, censor_rate=round(cr, 3),
-                events_closed_form=int(np.ceil(out["events_closed_form"])),
-                n_closed_form_evaluable=out["n_closed_form"],
+                events_closed_form=int(np.ceil(out["events_closed_form"])) if has_closed else np.nan,
+                n_closed_form_evaluable=out["n_closed_form"] if has_closed else np.nan,
                 n_calibrated_evaluable=out["n_calibrated"],
                 n_calibrated_ci_low=lo, n_calibrated_ci_high=hi,
                 n_enrolled=n_enrol,
@@ -348,7 +393,7 @@ def run_sample_size_mode(design: StudyDesign, hrs: list, powers: list) -> tuple[
                     res.summary
                     + (f" A median-split analysis would need ~{n_dich} enrolled (Schoenfeld "
                        f"closed form); at that N it would have {median_split_text(split)}."
-                       if design.n_covariates == 0 else "")
+                       if show_split else "")
                 ),
                 **split,
             ))
@@ -396,6 +441,7 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
                     sides=design.sides, n_sims_per_point=design.n_sims_grid,
                     confirm_n_sims=design.n_sims, seed=design.seed + 101 * combo,
                     engine=design.engine,
+                    power_at=lambda hr, n_sims, s: _simulated_power(design, hr, n_eval, cr, n_sims, s),
                 )
                 if design.accrual_months is None:
                     break
@@ -410,7 +456,8 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
             has_ci = np.isfinite(lo)
             row = dict(
                 n_enrolled=n, n_evaluable=n_eval, target_power=pw, censor_rate=round(cr, 3),
-                hr_closed_form_per_sd=out["hr_closed_form"],
+                hr_closed_form_per_sd=(out["hr_closed_form"] if _has_closed_form(design, hr_sd, cr)
+                                       else np.nan),
                 hr_detectable_per_sd=hr_sd,
                 hr_ci_low=lo, hr_ci_high=hi,
                 # by symmetry of X, the protective HR is 1/HR: its interval is the reciprocal one
@@ -461,6 +508,7 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
 
 def _cindex_context(design: StudyDesign, c: float) -> dict:
     """beta, censoring, horizon, estimator limit and sigma_C for a target C."""
+    design.require_default_models("concordance questions")
     if design.n_covariates > 0:
         raise ValueError("concordance questions are univariate; for a biomarker added to a "
                          "clinical model, power its adjusted hazard ratio instead (Appendix B.5)")

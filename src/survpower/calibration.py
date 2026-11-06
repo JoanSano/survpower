@@ -159,20 +159,23 @@ def estimate_required_n_by_simulation(
     engine: str = "fast",
     scan_below: int = 100,
     scan_if_flat: bool = False,
+    power_fn: PowerFn | None = None,
 ) -> dict:
     """Required N for a continuous covariate (optionally adjusted for p
     covariates at multiple correlation r2_target): closed form, then
-    simulation-calibrated (`calibrate_sample_size`)."""
+    simulation-calibrated (`calibrate_sample_size`). `power_fn` replaces the
+    default exponential PH simulation; the closed form still anchors the grid."""
     D0, N0 = sample_size_continuous_cph(
         hr, target_power, alpha=alpha, event_prob=1 - censor_rate,
         rho_sq=r2_target if p > 0 else 0.0, sides=sides,
     )
 
-    def power_fn(n, n_sims, s):
-        return simulate_power_design(
-            n=n, hr=hr, censor_rate=censor_rate, p=p, r2_target=r2_target,
-            lambda0=lambda0, n_sims=n_sims, alpha=alpha, sides=sides, seed=s, engine=engine,
-        )
+    if power_fn is None:
+        def power_fn(n, n_sims, s):
+            return simulate_power_design(
+                n=n, hr=hr, censor_rate=censor_rate, p=p, r2_target=r2_target,
+                lambda0=lambda0, n_sims=n_sims, alpha=alpha, sides=sides, seed=s, engine=engine,
+            )
 
     out = calibrate_sample_size(
         power_fn, N0, target_power, n_grid=n_grid, n_sims_per_point=n_sims_per_point,
@@ -206,10 +209,19 @@ def estimate_detectable_hr_by_simulation(
     confirm_n_sims: int = 2000,
     seed: int = 0,
     engine: str = "fast",
+    power_at: Callable[[float, int, int], "tuple[float, float]"] | None = None,
 ) -> dict:
     """Minimum detectable per-SD HR at sample size n: closed form, then a
     grid in log-HR, WLS fit of Phi^-1(power) = a log(HR) + b (near-linear at
-    fixed N), inversion and confirmation."""
+    fixed N), inversion and confirmation. `power_at(hr, n_sims, seed)` replaces
+    the default exponential PH simulation; the closed form still anchors the grid."""
+    if power_at is None:
+        def power_at(hr, n_sims, s):
+            return simulate_power_design(
+                n=n, hr=hr, censor_rate=censor_rate, p=p, r2_target=r2_target,
+                lambda0=lambda0, n_sims=n_sims, alpha=alpha, sides=sides, seed=s, engine=engine,
+            )
+
     hr0 = detectable_hr_continuous_cph(
         n, target_power, alpha=alpha, event_prob=1 - censor_rate,
         rho_sq=r2_target if p > 0 else 0.0, sides=sides,
@@ -217,11 +229,7 @@ def estimate_detectable_hr_by_simulation(
     betas = np.log(hr0) * np.array(beta_factors)
     powers, grid = [], []
     for i, b in enumerate(betas):
-        power_hat, mean_ev = simulate_power_design(
-            n=n, hr=float(np.exp(b)), censor_rate=censor_rate, p=p, r2_target=r2_target,
-            lambda0=lambda0, n_sims=n_sims_per_point, alpha=alpha, sides=sides,
-            seed=seed + 1000 * (i + 1), engine=engine,
-        )
+        power_hat, mean_ev = power_at(float(np.exp(b)), n_sims_per_point, seed + 1000 * (i + 1))
         powers.append(power_hat)
         grid.append(dict(hr=round(float(np.exp(b)), 4), power_hat=round(power_hat, 3),
                          mean_events=round(mean_ev, 1)))
@@ -237,11 +245,7 @@ def estimate_detectable_hr_by_simulation(
         ci = bootstrap_probit_inverse(betas, powers, n_sims_per_point, target_power,
                                       transform=np.exp, seed=seed + 31)
 
-    confirm_power, confirm_events = simulate_power_design(
-        n=n, hr=hr_calibrated, censor_rate=censor_rate, p=p, r2_target=r2_target,
-        lambda0=lambda0, n_sims=confirm_n_sims, alpha=alpha, sides=sides,
-        seed=seed + 999_999, engine=engine,
-    )
+    confirm_power, confirm_events = power_at(hr_calibrated, confirm_n_sims, seed + 999_999)
     return dict(
         n=n, target_power=target_power,
         hr_closed_form=round(hr0, 4), hr_calibrated=round(hr_calibrated, 4),

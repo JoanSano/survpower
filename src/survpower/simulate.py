@@ -103,6 +103,15 @@ def simulate_power(
     return rejections / n_sims, float(np.mean(reps.events)), lam_c
 
 
+def scenario_power(scenario: Scenario, n: int, n_sims: int, alpha: float, seed: int,
+                   sides: int) -> tuple[float, float]:
+    """(power, mean_events) of a scenario with one analysis."""
+    reps = run_replicates(scenario, n, n_sims=n_sims, seed=seed, alpha=alpha, sides=sides,
+                          desc=f"continuous n={n}")
+    name = scenario.analyses[0].name
+    return int(reps.values[name]["reject"].sum()) / n_sims, float(np.mean(reps.events))
+
+
 def simulate_power_with_adjustment(
     n: int,
     hr: float,
@@ -191,18 +200,30 @@ def simulate_continuous_vs_dichotomized(
     with the log-rank test (`power_dich_logrank`), whose power Schoenfeld's
     closed form predicts. Uses the fast engine (identical continuous decisions
     to `simulate_power` with the same seed)."""
-    cont, dich, lr = CoxWald(), CoxWald(dichotomize=True), LogRank(dichotomize=True)
-    reps = run_replicates(_ph_scenario(hr, censor_rate, lambda0, (cont, dich, lr)),
-                          n, n_sims=n_sims, seed=seed, alpha=alpha, sides=sides,
+    out = continuous_vs_dichotomized(_ph_scenario(hr, censor_rate, lambda0, CONT_VS_DICH),
+                                     n, n_sims, alpha, seed, sides)
+    return dict(n=n, hr=hr, **out)
+
+
+#: The analyses of `continuous_vs_dichotomized`, applied to the same cohorts.
+CONT_VS_DICH = (CoxWald(), CoxWald(dichotomize=True), LogRank(dichotomize=True))
+
+
+def continuous_vs_dichotomized(scenario: Scenario, n: int, n_sims: int, alpha: float, seed: int,
+                               sides: int) -> dict:
+    """The `simulate_continuous_vs_dichotomized` columns for any scenario whose
+    analyses are `CONT_VS_DICH`."""
+    cont, dich, lr = CONT_VS_DICH
+    reps = run_replicates(scenario, n, n_sims=n_sims, seed=seed, alpha=alpha, sides=sides,
                           desc=f"cont vs dich n={n}")
-    lam_c = reps.scenario.censoring.rate
+    lam_c = getattr(reps.scenario.censoring, "rate", None)
     events = reps.events
     vc, vd = reps.values[cont.name], reps.values[dich.name]
     rej_cont, rej_dich = int(vc["reject"].sum()), int(vd["reject"].sum())
     rej_lr = int(reps.values[lr.name]["reject"].sum())
     bc, bg, se_gs, ev_high = vc["beta_hat"], vd["beta_hat"], vd["se"], vd["events_high"]
     return dict(
-        n=n, hr=hr, n_sims=n_sims, mean_events=round(float(np.mean(events)), 1),
+        n_sims=n_sims, mean_events=round(float(np.mean(events)), 1),
         power_cont=round(rej_cont / n_sims, 3), power_dich=round(rej_dich / n_sims, 3),
         group_hr_fitted=round(float(np.exp(np.nanmean(bg))), 3), lam_c=lam_c,
         power_cont_mcse=_r4(proportion_mcse(rej_cont / n_sims, n_sims)),

@@ -61,7 +61,8 @@ re-exported from the top-level package (`from survpower import ...`).
 A `Scenario` composes one model per step of the Monte Carlo loop: covariates →
 event times → censoring → analyses. Models are plain objects satisfying the
 protocols below, so a new data-generating option is a new class, not a new
-loop. `simulate_power` and `simulate_continuous_vs_dichotomized` run on it.
+loop. `simulate_power`, `simulate_continuous_vs_dichotomized` and the unadjusted
+planning modes run on it, through `scenario_for`.
 
 ```python
 import numpy as np
@@ -78,7 +79,7 @@ The same seed gives the same result within one installed version.
 
 ::: survpower.scenario
     options:
-      members: [Scenario, simulate, run_replicates, Replicates, Covariates,
+      members: [Scenario, simulate, run_replicates, Replicates, Effect, scenario_for, Covariates,
                 CovariateModel, EventTimeModel, CensoringModel, Analysis,
                 StandardNormal, ExponentialPH, ExponentialCensoring, CoxWald, LogRank]
 

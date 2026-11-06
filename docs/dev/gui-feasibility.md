@@ -2,6 +2,10 @@
 
 Spike for #20. Assessed 2026-11-05 against survpower 0.3.0.
 
+> **Later changes (not otherwise reflected in this dated note):** the `to_cli` prototype in
+> appendix A uses the flag-only CLI syntax, which #61 replaced with subcommands (#54 is written
+> against those). #51 moved to milestone M5.5, although the follow-up table says M6.
+
 ## Summary
 
 **Go, with Streamlit, for a local app launched by `survpower gui`.** Build it after the

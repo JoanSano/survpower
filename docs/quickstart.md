@@ -14,7 +14,7 @@ for the numbers you report.
 ## 1. "How many patients do I need?"
 
 ```bash
-survpower --hr 1.20 --power 0.80 0.90
+survpower sample-size --hr 1.20 --power 0.80 0.90
 ```
 
 Required events and N at each target power: the closed form and the
@@ -26,7 +26,7 @@ information, equivalent to discarding ~36% of the events.
 ## 2. "Is my existing cohort big enough?"
 
 ```bash
-survpower --hr 1.10 1.15 --n 250 1200
+survpower power --hr 1.10 1.15 --n 250 1200
 ```
 
 Power for every (N, HR) pair, with a 95% Monte Carlo interval, the closed-form
@@ -35,7 +35,7 @@ prediction and the dichotomized power.
 ## 3. "What is the smallest effect my cohort can detect?"
 
 ```bash
-survpower --n 250
+survpower detectable-effect --n 250
 ```
 
 The minimum detectable hazard ratio per SD and its protective reciprocal, each
@@ -46,7 +46,7 @@ power.
 ## 4. A realistic trial calendar
 
 ```bash
-survpower --hr 1.25 \
+survpower sample-size --hr 1.25 \
     --accrual-months 36 --followup-months 12 --dropout 0.05 \
     --non-evaluable 0.10 --median-os 15
 ```
@@ -60,7 +60,7 @@ of patients without an evaluable biomarker. See
 ## 5. The biomarker will be adjusted for clinical covariates
 
 ```bash
-survpower --hr 1.20 --n-covariates 5 --r2 0.3
+survpower sample-size --hr 1.20 --n-covariates 5 --r2 0.3
 ```
 
 `--r2` is the R² of the biomarker regressed on the adjustment covariates (from
@@ -72,9 +72,9 @@ biomarker, adjusting for them *increases* power (`--sensitivity omitted`). See [
 ## 6. The effect is pre-registered as a concordance index
 
 ```bash
-survpower --c-index 0.70                       # association: N to detect any effect
-survpower --c-index 0.70 --c0 0.65             # discrimination beats a benchmark
-survpower --c-index 0.70 --precision 0.05      # precision of the estimated C
+survpower sample-size --c-index 0.70                  # association: N to detect any effect
+survpower benchmark --c-index 0.70 --c0 0.65          # discrimination beats a benchmark
+survpower precision --c-index 0.70 --half-width 0.05  # precision of the estimated C
 ```
 
 These three questions need very different sample sizes for the same C = 0.70:
@@ -87,7 +87,7 @@ for the model-based Gönen–Heller C.
 ## 7. Per-unit instead of per-SD effects
 
 ```bash
-survpower --hr 1.05 --biomarker-sd 4.2
+survpower sample-size --hr 1.05 --biomarker-sd 4.2
 ```
 
 The HR is per raw unit of the biomarker (e.g. per mm³ or per index point);
@@ -96,7 +96,7 @@ results are reported on both scales.
 ## 8. What if hazards are not proportional?
 
 ```bash
-survpower --hr 1.30 --n 400 --sensitivity waning crossing --tau 6
+survpower power --hr 1.30 --n 400 --sensitivity waning crossing --tau 6
 ```
 
 Re-simulates the planning point under an effect that disappears after 6 months,

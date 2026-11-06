@@ -5,9 +5,9 @@ with sample sizes an order of magnitude apart. With 20% censoring and Harrell's 
 
 | Question | Command | N for C = 0.70 |
 |---|---|---|
-| **Association**: is the biomarker related to survival at all? | `--c-index 0.70` | ≈ 21 |
-| **Precision**: estimate C to ±0.05 | `--c-index 0.70 --precision 0.05` | ≈ 150 |
-| **Benchmark**: show C exceeds C₀ = 0.65 | `--c-index 0.70 --c0 0.65` | ≈ 230 |
+| **Association**: is the biomarker related to survival at all? | `sample-size --c-index 0.70` | ≈ 21 |
+| **Precision**: estimate C to ±0.05 | `precision --c-index 0.70 --half-width 0.05` | ≈ 150 |
+| **Benchmark**: show C exceeds C₀ = 0.65 | `benchmark --c-index 0.70 --c0 0.65` | ≈ 230 |
 
 State the question explicitly in the protocol. The generated summaries do.
 

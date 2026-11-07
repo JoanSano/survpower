@@ -109,9 +109,10 @@ On `benchmark` and `precision`.
 
 ## Migrating from the flag-only syntax
 
-Until 0.4.1, a first argument that starts with `--` is translated to a command, with a
-warning on stderr that shows the new command. Flags the new command does not take, because
-they were being ignored, are dropped and listed in the warning, so results do not change.
+The flag-only syntax was removed in 0.4.1. A first argument that starts with `--` (other
+than `--help` and `--version`) now exits with code 2 and lists the commands. Rewrite old
+calls as below. Flags the new command rejects were being ignored before, so drop them;
+results do not change.
 
 | Before | Now |
 |---|---|

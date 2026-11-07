@@ -3,8 +3,14 @@
 ## Unreleased
 
 ### Removed
+- **The flag-only CLI syntax** (`survpower --hr 1.15 ...`), deprecated in 0.4.0. A first
+  argument that starts with `--`, other than `--help` and `--version`, now exits with
+  code 2 and lists the commands; see "Migrating from the flag-only syntax" in
+  `docs/cli.md` (#66).
+- The `survpower report` stub. `report` is now an invalid command; the report is still
+  reproducible from the `v0.2.0` tag (#66).
 - The docs and README no longer refer to the report, and the "Reproducing the report"
-  page is gone. `survpower report` still names the `v0.2.0` tag. Numbers that cited the
+  page is gone. Numbers that cited the
   report are recomputed with the package, and tutorial 01 now checks its simulated power
   against the closed forms (#70).
 - Docstrings, comments and two messages in `survpower` (the concordance-question

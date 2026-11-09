@@ -19,14 +19,14 @@ from lifelines.statistics import proportional_hazard_test
 from scipy.stats import norm
 
 from ._utils import tqdm
-from .baseline import DEFAULT_LAMBDA0
+from .baseline import DEFAULT_LAMBDA0, is_exponential
 from .censoring import (
     calibrate_censoring_crossing,
     calibrate_censoring_rate,
     calibrate_censoring_rate_heterogeneous,
     calibrate_censoring_waning,
 )
-from .dgp import gen_adjustment_covariates, gen_crossing, gen_waning
+from .dgp import gen_adjustment_covariates, gen_crossing, gen_waning, ph_event_times
 from .fitting import ENGINES, cox_fit_1d, fit_cox, logrank_1d, rejects, wald_rejects
 from .results import exp_mean_mcse, mean_mcse, proportion_mcse, sd_mcse, summarize_replicates
 from .scenario import (
@@ -34,6 +34,7 @@ from .scenario import (
     ExponentialCensoring,
     ExponentialPH,
     LogRank,
+    PHModel,
     Scenario,
     StandardNormal,
     design_frame,
@@ -67,10 +68,17 @@ def _censor(T: np.ndarray, lam_c: float, rng: np.random.Generator):
 _design_frame = design_frame
 
 
-def _ph_scenario(hr, censor_rate, lambda0, analyses) -> Scenario:
-    """Exponential PH with X ~ N(0, 1) and calibrated exponential censoring."""
-    return Scenario(StandardNormal(), ExponentialPH(log_hr=np.log(hr), lambda0=lambda0),
-                    ExponentialCensoring(target_rate=censor_rate), analyses)
+def _ph_scenario(hr, censor_rate, lambda0, analyses, baseline=None) -> Scenario:
+    """PH with X ~ N(0, 1) and calibrated exponential censoring: exponential
+    (`ExponentialPH`, rate `lambda0` or the `Exponential` baseline's) unless
+    another `baseline` is given (`PHModel`)."""
+    if is_exponential(baseline):
+        lam = lambda0 if baseline is None else baseline.rate
+        event_times = ExponentialPH(log_hr=np.log(hr), lambda0=lam)
+    else:
+        event_times = PHModel(baseline, log_hr=np.log(hr))
+    return Scenario(StandardNormal(), event_times, ExponentialCensoring(target_rate=censor_rate),
+                    analyses)
 
 
 def simulate_power(
@@ -84,14 +92,17 @@ def simulate_power(
     sides: int = 2,
     engine: str = "fast",
     details: bool = False,
+    baseline=None,
 ) -> tuple[float, float, float] | dict:
     """Monte Carlo power for a continuous covariate in a univariate Cox model.
 
     Returns (power, mean_events, lambda_c); with `details`, the unrounded
     `summarize_replicates` dict (power, bias, empirical / model SE, coverage,
-    each with its MCSE) plus `lambda_c`.
+    each with its MCSE) plus `lambda_c`. `baseline` (`survpower.baseline`)
+    replaces the exponential baseline of rate `lambda0`.
     """
-    reps = run_replicates(_ph_scenario(hr, censor_rate, lambda0, (CoxWald(engine=engine),)),
+    reps = run_replicates(_ph_scenario(hr, censor_rate, lambda0, (CoxWald(engine=engine),),
+                                       baseline),
                           n, n_sims=n_sims, seed=seed, alpha=alpha, sides=sides,
                           desc=f"continuous n={n} HR={hr:.3g}")
     lam_c = reps.scenario.censoring.rate
@@ -123,17 +134,19 @@ def simulate_power_with_adjustment(
     alpha: float = 0.05,
     seed: int = 0,
     sides: int = 2,
+    baseline=None,
 ) -> dict:
     """Power for X in a Cox model adjusted for p null covariates whose
     multiple correlation with X is r2_target. The true hazard
-    depends only on X."""
+    depends only on X; `baseline` replaces the exponential baseline."""
     beta = np.log(hr)
-    lam_c = calibrate_censoring_rate(beta, censor_rate, lambda0=lambda0, seed=seed + 999)
+    lam_c = calibrate_censoring_rate(beta, censor_rate, lambda0=lambda0, seed=seed + 999,
+                                     baseline=baseline)
     rng = np.random.default_rng(seed)
     rejections, events, beta_hats, ses, reject = 0, [], [], [], []
     for _ in tqdm(range(n_sims), desc=f"p={p} R2={r2_target}", leave=False):
         X, Z = gen_adjustment_covariates(n, r2_target, p, rng)
-        T = rng.exponential(scale=1.0 / (lambda0 * np.exp(beta * X)))
+        T = ph_event_times(beta * X, rng, lambda0, baseline)
         time_, event = _censor(T, lam_c, rng)
         events.append(event.sum())
         cph, _ = fit_cox(_design_frame(time_, event, X, Z))
@@ -165,19 +178,22 @@ def simulate_power_design(
     seed: int = 0,
     engine: str = "fast",
     details: bool = False,
+    baseline=None,
 ) -> tuple[float, float] | dict:
     """Power for X, unadjusted (p = 0, `simulate_power` with `engine`) or
     adjusted (`simulate_power_with_adjustment`, lifelines). Returns
-    (power, mean_events); with `details`, the engine's full dict with MCSEs."""
+    (power, mean_events); with `details`, the engine's full dict with MCSEs.
+    `baseline` replaces the exponential baseline of rate `lambda0`."""
     if p == 0:
         out = simulate_power(
             n=n, hr=hr, censor_rate=censor_rate, lambda0=lambda0, n_sims=n_sims,
             alpha=alpha, sides=sides, seed=seed, engine=engine, details=details,
+            baseline=baseline,
         )
         return out if details else (out[0], out[1])
     out = simulate_power_with_adjustment(
         n=n, hr=hr, censor_rate=censor_rate, p=p, r2_target=r2_target,
-        lambda0=lambda0, n_sims=n_sims, alpha=alpha, sides=sides, seed=seed,
+        lambda0=lambda0, n_sims=n_sims, alpha=alpha, sides=sides, seed=seed, baseline=baseline,
     )
     return out if details else (out["power"], out["mean_events"])
 
@@ -191,6 +207,7 @@ def simulate_continuous_vs_dichotomized(
     alpha: float = 0.05,
     seed: int = 0,
     sides: int = 2,
+    baseline=None,
 ) -> dict:
     """Continuous and median-dichotomized Cox analyses on the *same*
     simulated cohorts. The dichotomized fit uses
@@ -199,8 +216,9 @@ def simulate_continuous_vs_dichotomized(
     reports and the expected events per group. The groups are also compared
     with the log-rank test (`power_dich_logrank`), whose power Schoenfeld's
     closed form predicts. Uses the fast engine (identical continuous decisions
-    to `simulate_power` with the same seed)."""
-    out = continuous_vs_dichotomized(_ph_scenario(hr, censor_rate, lambda0, CONT_VS_DICH),
+    to `simulate_power` with the same seed). `baseline` replaces the
+    exponential baseline of rate `lambda0`."""
+    out = continuous_vs_dichotomized(_ph_scenario(hr, censor_rate, lambda0, CONT_VS_DICH, baseline),
                                      n, n_sims, alpha, seed, sides)
     return dict(n=n, hr=hr, **out)
 

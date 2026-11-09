@@ -57,8 +57,9 @@ from scipy import integrate, optimize, stats
 from scipy.special import expit, ndtr
 
 from ._utils import tqdm
-from .baseline import DEFAULT_LAMBDA0
+from .baseline import DEFAULT_LAMBDA0, is_exponential
 from .censoring import calibrate_censoring_rate
+from .dgp import ph_event_times
 from .fitting import cox_fit_1d, wald_rejects
 from .results import mean_mcse, proportion_mcse, sd_mcse
 
@@ -102,10 +103,18 @@ def beta_of_c_approx(c: float, kappa: float = RULE_OF_THUMB_KAPPA) -> float:
 # --- What the estimators converge to ------------------------------------------
 
 def harrell_limit(beta: float, lam_c: float, lambda0: float = DEFAULT_LAMBDA0,
-                  n: int = 2_000_000, seed: int = 7) -> float:
+                  n: int = 2_000_000, seed: int = 7, baseline=None) -> float:
     """Large-sample limit of Harrell's C under exponential censoring.
-    A pair is comparable with probability (r_i + r_j) / (r_i + r_j + 2 lam_c)
-    and then concordant with probability expit(|beta| |X_i - X_j|)."""
+
+    Exponential baseline: a pair is comparable with probability
+    (r_i + r_j) / (r_i + r_j + 2 lam_c) and then concordant with probability
+    expit(|beta| |X_i - X_j|), averaged over `n` pairs of X. Any other
+    `baseline` (`survpower.baseline`) has no such form: the limit is then the
+    concordance among the comparable pairs of `n` simulated, censored pairs
+    (Monte Carlo SE about 0.0004 at the default n)."""
+    if not is_exponential(baseline):
+        return _harrell_limit_mc(beta, lam_c, baseline, n, seed)
+    lambda0 = lambda0 if baseline is None else baseline.rate
     rng = np.random.default_rng(seed)
     xi, xj = rng.standard_normal(n), rng.standard_normal(n)
     ri, rj = lambda0 * np.exp(beta * xi), lambda0 * np.exp(beta * xj)
@@ -113,14 +122,30 @@ def harrell_limit(beta: float, lam_c: float, lambda0: float = DEFAULT_LAMBDA0,
     return float(np.sum(w * expit(abs(beta) * np.abs(xi - xj))) / np.sum(w))
 
 
-def uno_limit(beta: float, tau: float, lambda0: float = DEFAULT_LAMBDA0,
-              n: int = 2_000_000, seed: int = 7) -> float:
-    """Large-sample limit of Uno's C truncated at tau: the censoring-free
-    concordance among pairs whose first failure occurs before tau."""
+def _harrell_limit_mc(beta, lam_c, baseline, n, seed) -> float:
     rng = np.random.default_rng(seed)
     xi, xj = rng.standard_normal(n), rng.standard_normal(n)
-    ti = rng.exponential(scale=1.0 / (lambda0 * np.exp(beta * xi)))
-    tj = rng.exponential(scale=1.0 / (lambda0 * np.exp(beta * xj)))
+    Ti = ph_event_times(beta * xi, rng, baseline=baseline)
+    Tj = ph_event_times(beta * xj, rng, baseline=baseline)
+    Ci, Cj = rng.exponential(scale=1.0 / lam_c, size=(2, n))
+    ti, tj, ei, ej = np.minimum(Ti, Ci), np.minimum(Tj, Cj), Ti <= Ci, Tj <= Cj
+    first_i = ti < tj
+    comparable = np.where(first_i, ei, ej)
+    s = np.sign(beta) if beta != 0 else 1.0
+    conc = np.where(first_i, s * xi > s * xj, s * xj > s * xi)
+    return float(np.mean(conc[comparable]))
+
+
+def uno_limit(beta: float, tau: float, lambda0: float = DEFAULT_LAMBDA0,
+              n: int = 2_000_000, seed: int = 7, baseline=None) -> float:
+    """Large-sample limit of Uno's C truncated at tau: the censoring-free
+    concordance among pairs whose first failure occurs before tau, by Monte
+    Carlo over `n` pairs, with exponential event times of rate `lambda0` or
+    the given `baseline`."""
+    rng = np.random.default_rng(seed)
+    xi, xj = rng.standard_normal(n), rng.standard_normal(n)
+    ti = ph_event_times(beta * xi, rng, lambda0, baseline)
+    tj = ph_event_times(beta * xj, rng, lambda0, baseline)
     first_i = ti < tj
     valid = np.minimum(ti, tj) < tau
     s = np.sign(beta) if beta != 0 else 1.0
@@ -129,24 +154,27 @@ def uno_limit(beta: float, tau: float, lambda0: float = DEFAULT_LAMBDA0,
 
 
 def default_uno_tau(beta: float, lam_c: float, lambda0: float = DEFAULT_LAMBDA0,
-                    quantile: float = 0.9, n_probe: int = 200_000, seed: int = 3) -> float:
+                    quantile: float = 0.9, n_probe: int = 200_000, seed: int = 3,
+                    baseline=None) -> float:
     """Default Uno horizon: the `quantile` of observed follow-up min(T, C)
     under the design, which keeps the IPCW weights bounded."""
     rng = np.random.default_rng(seed)
     X = rng.standard_normal(n_probe)
-    T = rng.exponential(scale=1.0 / (lambda0 * np.exp(beta * X)))
+    T = ph_event_times(beta * X, rng, lambda0, baseline)
     C = rng.exponential(scale=1.0 / lam_c, size=n_probe)
     return float(np.quantile(np.minimum(T, C), quantile))
 
 
 def concordance_limit(beta: float, lam_c: float, method: str = "harrell",
-                      tau: float | None = None, lambda0: float = DEFAULT_LAMBDA0) -> float:
-    """Value the chosen estimator converges to under the design."""
+                      tau: float | None = None, lambda0: float = DEFAULT_LAMBDA0,
+                      baseline=None) -> float:
+    """Value the chosen estimator converges to under the design (exponential
+    baseline of rate `lambda0`, or the given `baseline`)."""
     if method == "harrell":
-        return harrell_limit(beta, lam_c, lambda0=lambda0)
+        return harrell_limit(beta, lam_c, lambda0=lambda0, baseline=baseline)
     if method == "uno":
-        tau = default_uno_tau(beta, lam_c, lambda0) if tau is None else tau
-        return uno_limit(beta, tau, lambda0=lambda0)
+        tau = default_uno_tau(beta, lam_c, lambda0, baseline=baseline) if tau is None else tau
+        return uno_limit(beta, tau, lambda0=lambda0, baseline=baseline)
     if method == "gonen-heller":
         return c_of_beta(beta)
     raise ValueError(f"method must be one of {ESTIMATORS}")
@@ -165,7 +193,7 @@ def mapping_table(levels=(0.55, 0.60, 0.65, 0.70, 0.75), censor_rate: float = 0.
 
     With a `design`, its baseline hazard and censoring (fixed rate or
     accrual / follow-up / dropout) replace `censor_rate`. Values are unrounded."""
-    lambda0 = DEFAULT_LAMBDA0 if design is None else design.lambda0
+    model = dict(lambda0=DEFAULT_LAMBDA0) if design is None else design.baseline_kwargs()
     z = stats.norm.ppf(1 - alpha / 2) + stats.norm.ppf(power)
     rows = []
     for c in levels:
@@ -173,12 +201,12 @@ def mapping_table(levels=(0.55, 0.60, 0.65, 0.70, 0.75), censor_rate: float = 0.
         hr = float(np.exp(b))
         if design is None:
             rate = censor_rate
-            lam_c = calibrate_censoring_rate(b, rate, lambda0=lambda0)
+            lam_c = calibrate_censoring_rate(b, rate, **model)
         else:
             rate, lam_c = design.censor_rate_for(hr), design.lambda_c_for(hr)
         d = z ** 2 / b ** 2
         rows.append(dict(C=float(c), beta=b, hr=hr, lam_c=lam_c,
-                         harrell_limit=harrell_limit(b, lam_c, lambda0),
+                         harrell_limit=harrell_limit(b, lam_c, **model),
                          D80=d, N80_closed_form=int(np.ceil(d / (1 - rate)))))
     return pd.DataFrame(rows)
 
@@ -348,9 +376,11 @@ def simulate_cindex_power(
     tau: float | None = None,
     lambda0: float = DEFAULT_LAMBDA0,
     seed: int = 0,
+    baseline=None,
 ) -> dict:
     """One simulation cell: cohorts of size n with per-SD log-HR
-    beta and exponential censoring rate lam_c. Records
+    beta and exponential censoring rate lam_c, with an exponential baseline
+    of rate `lambda0` or the given `baseline`. Records
 
     * power_cox  : Cox Wald test of beta = 0 (`sides`, level alpha)
     * power_c05  : test of C = 0.5 from the estimated C and its SE (`sides`)
@@ -364,7 +394,7 @@ def simulate_cindex_power(
     construction (it orients itself by the sign of beta_hat).
     """
     if method == "uno" and tau is None:
-        tau = default_uno_tau(beta, lam_c, lambda0)
+        tau = default_uno_tau(beta, lam_c, lambda0, baseline=baseline)
     s = np.sign(beta) if beta != 0 else 1.0
     z_one = stats.norm.ppf(1 - alpha)
     rng = np.random.default_rng(seed)
@@ -372,7 +402,7 @@ def simulate_cindex_power(
     cs, ses, bh, ev = [], [], [], []
     for _ in tqdm(range(n_sims), desc=f"c-index n={n}", leave=False):
         X = rng.standard_normal(n)
-        T = rng.exponential(scale=1.0 / (lambda0 * np.exp(beta * X)))
+        T = ph_event_times(beta * X, rng, lambda0, baseline)
         C = rng.exponential(scale=1.0 / lam_c, size=n)
         t, d = np.minimum(T, C), T <= C
         ev.append(d.sum())
@@ -413,7 +443,7 @@ def simulate_cindex_power(
 
 def sigma_c(beta: float, lam_c: float, method: str = "harrell", tau: float | None = None,
             lambda0: float = DEFAULT_LAMBDA0, n: int = 2000, n_sims: int | None = None,
-            seed: int = 99) -> float:
+            seed: int = 99, baseline=None) -> float:
     """Asymptotic SD of sqrt(N) * C_hat, sigma_C = lim sqrt(N Var(C_hat)),
     estimated from the analytic SE in `n_sims` large cohorts of size n
     (the analytic SE is far less noisy than the empirical SD at N = 3000, and
@@ -422,19 +452,19 @@ def sigma_c(beta: float, lam_c: float, method: str = "harrell", tau: float | Non
     between cohorts (~1.5% per draw) but costs ~10x more per cohort."""
     if n_sims is None:
         n_sims = 10 if method == "gonen-heller" else 40
-    out = _se_draws(n, beta, lam_c, method, tau, lambda0, n_sims, seed)
+    out = _se_draws(n, beta, lam_c, method, tau, lambda0, n_sims, seed, baseline)
     return float(np.sqrt(n) * np.sqrt(np.mean(out ** 2)))
 
 
-def _se_draws(n, beta, lam_c, method, tau, lambda0, n_sims, seed):
+def _se_draws(n, beta, lam_c, method, tau, lambda0, n_sims, seed, baseline=None):
     if method == "uno" and tau is None:
-        tau = default_uno_tau(beta, lam_c, lambda0)
+        tau = default_uno_tau(beta, lam_c, lambda0, baseline=baseline)
     s = np.sign(beta) if beta != 0 else 1.0
     rng = np.random.default_rng(seed)
     ses = []
     for _ in range(n_sims):
         X = rng.standard_normal(n)
-        T = rng.exponential(scale=1.0 / (lambda0 * np.exp(beta * X)))
+        T = ph_event_times(beta * X, rng, lambda0, baseline)
         C = rng.exponential(scale=1.0 / lam_c, size=n)
         if method == "gonen-heller":
             ses.append(concordance_index(np.minimum(T, C), T <= C, X, method=method)[1])

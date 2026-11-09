@@ -3,7 +3,9 @@
 ## One replicate
 
 1. Draw \(X_i \sim \mathcal N(0,1)\) and \(T_i \sim \text{Exp}(\lambda_0 e^{\beta X_i})\)
-   (plus adjustment covariates, or a non-PH generator, where applicable).
+   (plus adjustment covariates, or a non-PH generator, where applicable). With another
+   baseline hazard, \(T_i = H_0^{-1}(E_i e^{-\beta X_i})\), \(E_i \sim \text{Exp}(1)\)
+   (see [the shape of the baseline hazard](censoring-and-accrual.md#shape-of-the-baseline-hazard)).
 2. Draw \(C_i \sim \text{Exp}(\lambda_c)\), with \(\lambda_c\) calibrated once
    by bisection on a 500,000-subject probe so that \(P(C < T)\) equals the target.
 3. Fit the planned Cox model and record the Wald test on \(X\), two-sided

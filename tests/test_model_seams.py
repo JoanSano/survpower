@@ -1,7 +1,8 @@
 """One route from a StudyDesign to a Scenario, and a guard on every other path (#62).
 
-`StudyDesign` has no model fields yet (#14 and #16 add them), so a test model enters by
-replacing `planning.scenario_for`, and a design with a non-default model is a subclass."""
+A test model enters by replacing `planning.scenario_for`, and a design with a non-default
+model is a subclass, so that these checks do not depend on any real model field. The real
+`baseline` field (#14) is tested in `test_baseline.py`."""
 
 import dataclasses
 import inspect
@@ -71,10 +72,18 @@ def _use_test_model(monkeypatch, is_ph=True):
 
 @dataclass(frozen=True)
 class _DesignWithModel(StudyDesign):
-    """What a design looks like once #14 adds a field."""
+    """A design whose `baseline` is not exponential, without a real baseline model."""
 
     def non_default_models(self):
         return ("baseline",)
+
+
+@dataclass(frozen=True)
+class _DesignWithOtherModel(StudyDesign):
+    """A design with a model field that no path honours yet (#16 adds censoring models)."""
+
+    def non_default_models(self):
+        return ("censoring",)
 
 
 # --- scenario_for ------------------------------------------------------------------
@@ -110,8 +119,8 @@ def test_scenario_for_uses_the_censoring_at_the_effect():
 def test_scenario_for_refuses_what_it_cannot_build():
     with pytest.raises(ValueError, match="n_covariates"):
         scenario_for(StudyDesign(n_covariates=2), Effect.hr(1.2))
-    with pytest.raises(ValueError, match="baseline"):  # a new field cannot have no effect
-        scenario_for(_DesignWithModel(), Effect.hr(1.2))
+    with pytest.raises(ValueError, match="censoring"):  # a new field cannot have no effect
+        scenario_for(_DesignWithOtherModel(), Effect.hr(1.2))
 
 
 @pytest.mark.parametrize("kwargs", [dict(scale="odds", per_sd=1.2), dict(scale="hr", per_sd=0.0),
@@ -201,7 +210,9 @@ SUPPORTS = {
     "run_sample_size_mode": lambda d: run_sample_size_mode(d, [1.5], [0.8]),
     "run_detectable_effect_mode": lambda d: run_detectable_effect_mode(d, [120], [0.8]),
 }
-RAISES = {
+#: Paths with their own loop that honour the `baseline` field (#14), passed on to their
+#: engines; `test_baseline.py` runs them with a real baseline.
+HONOUR_BASELINE = {
     "adjusted power": (lambda d: run_power_mode(d, [1.4], [120]), dict(n_covariates=2)),
     "adjusted sample_size": (lambda d: sample_size(hr=1.5, design=d), dict(n_covariates=2)),
     "adjusted closed form": (lambda d: sample_size(hr=1.5, design=d, method="closed_form"),
@@ -212,6 +223,8 @@ RAISES = {
                             dict(n_covariates=2)),
     "run_cindex_benchmark_mode": (lambda d: run_cindex_benchmark_mode(d, [0.7], [0.6], ns=[100]), {}),
     "run_cindex_precision_mode": (lambda d: run_cindex_precision_mode(d, [0.7], ns=[100]), {}),
+}
+RAISES = {
     "run_sensitivity": (lambda d: run_sensitivity(d, n=100, hr=1.3, which=["waning"], plots=False), {}),
 }
 #: These take a design but are steps of the paths above.
@@ -225,7 +238,8 @@ def test_the_lists_above_cover_every_path_that_takes_a_design():
             if (fn.__module__ == module.__name__ and not name.startswith("_")
                     and "design" in inspect.signature(fn).parameters):
                 found.add(name)
-    assert found == set(SUPPORTS) | {n for n in RAISES if n.startswith("run_")} | STEPS
+    guarded = set(RAISES) | set(HONOUR_BASELINE)
+    assert found == set(SUPPORTS) | {n for n in guarded if n.startswith("run_")} | STEPS
 
 
 @pytest.mark.parametrize("name", SUPPORTS)
@@ -242,11 +256,18 @@ def test_other_paths_raise_naming_the_option(name):
         run(_DesignWithModel(**FEW, **kwargs))
 
 
+@pytest.mark.parametrize("name", HONOUR_BASELINE)
+def test_paths_that_honour_the_baseline_still_raise_for_other_models(name):
+    run, kwargs = HONOUR_BASELINE[name]
+    with pytest.raises(ValueError, match="censoring"):
+        run(_DesignWithOtherModel(**FEW, **kwargs))
+
+
 def test_unadjusted_paths_raise_until_scenario_for_builds_the_model():
     """Without the monkeypatch, no path silently gives an exponential answer."""
     for run in SUPPORTS.values():
-        with pytest.raises(ValueError, match="baseline"):
-            run(_DesignWithModel(**FEW))
+        with pytest.raises(ValueError, match="censoring"):
+            run(_DesignWithOtherModel(**FEW))
 
 
 # --- censoring sees the cohort ----------------------------------------------------------

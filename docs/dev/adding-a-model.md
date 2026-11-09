@@ -15,14 +15,20 @@ turns a design into models. The unadjusted `run_power_mode`, `sample_size`,
 `run_sample_size_mode` and `run_detectable_effect_mode` all go through it. `median_split_summary`
 does too.
 
-Every other path has its own exponential loop and calls `design.require_default_models(path)`
-first:
+Every other path has its own loop and calls `design.require_default_models(path, supports=...)`
+first. `supports` names the model fields that the path passes on to its engines; any other
+non-default field raises:
 
-| Path | Guard message starts with |
-|---|---|
-| The same modes with `n_covariates > 0` | `adjusted analyses` |
-| `run_cindex_benchmark_mode`, `run_cindex_precision_mode` | `concordance questions` |
-| `run_sensitivity` | `sensitivity analyses` |
+| Path | Guard message starts with | Honours |
+|---|---|---|
+| The same modes with `n_covariates > 0` | `adjusted analyses` | `baseline` |
+| `run_cindex_benchmark_mode`, `run_cindex_precision_mode` | `concordance questions` | `baseline` |
+| `run_sensitivity` | `sensitivity analyses` | nothing |
+
+`scenario_for` lists the fields it builds in `scenario.SCENARIO_FOR_SUPPORTS`. The paths with
+their own loop take a PH baseline through `design.baseline_kwargs()`: `lambda0=` for the
+exponential baseline, which keeps their random stream, and `baseline=` otherwise. They draw
+event times with `dgp.ph_event_times`.
 
 Moving one of these onto the engine is separate work, done when a feature needs it.
 
@@ -42,8 +48,10 @@ Moving one of these onto the engine is separate work, done when a feature needs 
    `StudyDesign.non_default_models()` when it is not the default. Every guarded path then
    raises for it, naming the field.
 
-3. **Add its branch in `scenario_for`**, and stop `scenario_for` raising for that field.
+3. **Add its branch in `scenario_for`**, and add the field to `SCENARIO_FOR_SUPPORTS`.
    Until you do, it raises like the guarded paths, so a field cannot silently have no effect.
+   `baseline` (#14) is the worked example: `ExponentialPH` when it is exponential, so the
+   default stream does not move, and `PHModel` otherwise.
 
 4. **Say whether closed forms apply.** `Scenario.has_closed_form` is `event_times.is_ph`.
    Without one, `method="closed_form"` raises, the `*_closed_form` columns are NaN, and the

@@ -8,8 +8,10 @@ from numbers import Integral
 
 import numpy as np
 
-from .baseline import DEFAULT_CENSOR_RATE, DEFAULT_MEDIAN_OS_MONTHS, median_os_to_lambda0
-from .censoring import calibrate_censoring_rate, censor_rate_from_design
+from .baseline import (DEFAULT_CENSOR_RATE, DEFAULT_MEDIAN_OS_MONTHS, Exponential, _Baseline,
+                       is_exponential, median_os_to_lambda0)
+from .censoring import (calibrate_censoring_rate, censor_rate_from_design,
+                        require_censoring_above_cure)
 from .concordance import ESTIMATORS, c_of_beta
 from .fitting import ENGINES
 
@@ -56,6 +58,10 @@ class StudyDesign:
     engine           : "fast" or "lifelines" for univariate Cox fits.
     n_sims           : replicates for power estimates / confirmation runs.
     n_sims_grid      : replicates per grid point when solving for N or HR.
+    baseline         : the baseline hazard (`survpower.baseline`: Weibull,
+                       Gompertz, ...), whose median must equal `median_os`.
+                       Default None, the exponential baseline
+                       ``Exponential(median_os)``.
     """
 
     alpha: float = 0.05
@@ -75,6 +81,7 @@ class StudyDesign:
     n_sims: int = 1000
     n_sims_grid: int = 1000
     seed: int = 42
+    baseline: _Baseline | None = None
 
     def __post_init__(self) -> None:
         _require(0 < self.alpha < 0.5, "alpha must be in (0, 0.5)")
@@ -113,42 +120,72 @@ class StudyDesign:
             value = getattr(self, name)
             _require(isinstance(value, Integral) and value >= 1,
                      f"{name} must be a positive integer")
+        if self.baseline is not None:
+            _require(isinstance(self.baseline, _Baseline),
+                     "baseline must be a survpower.baseline family, such as Weibull(...)")
+            _require(np.isclose(self.baseline.median, self.median_os, rtol=1e-12, atol=0),
+                     f"baseline median ({self.baseline.median:g}) must equal median_os "
+                     f"({self.median_os:g}): give median_os={self.baseline.median:g} too")
 
     def non_default_models(self) -> tuple:
         """Names of the fields that select a model other than exponential PH with
-        exponential censoring. None exist yet: #14 and #16 add them."""
-        return ()
+        exponential censoring: ``baseline`` when it is not exponential. #16 adds
+        censoring models."""
+        return () if is_exponential(self.baseline) else ("baseline",)
 
-    def require_default_models(self, path: str) -> None:
+    def require_default_models(self, path: str, supports: tuple = ()) -> None:
         """Raise if `path` cannot honour this design's models. Every path that is
-        not built on `scenario.scenario_for` calls this: an unsupported combination
-        must fail, never fall back to the exponential model."""
-        unsupported = self.non_default_models()
+        not built on `scenario.scenario_for` calls this, with the model fields it
+        does honour in `supports`: an unsupported combination must fail, never
+        fall back to the exponential model."""
+        unsupported = [name for name in self.non_default_models() if name not in supports]
         if unsupported:
             raise ValueError(f"{path} supports only exponential PH with exponential censoring; "
                              f"this design sets: {', '.join(unsupported)}")
 
     @property
+    def baseline_hazard(self) -> _Baseline:
+        """The baseline hazard: `baseline`, or ``Exponential(median_os)`` by default."""
+        return Exponential(self.median_os) if self.baseline is None else self.baseline
+
+    @property
     def lambda0(self) -> float:
+        """The constant baseline hazard, per month. Only an exponential baseline has one."""
+        if not is_exponential(self.baseline):
+            raise ValueError(f"lambda0 is only defined for an exponential baseline; this "
+                             f"design's baseline is {self.baseline.label()}: use "
+                             f"design.baseline")
         return median_os_to_lambda0(self.median_os)
+
+    def baseline_kwargs(self) -> dict:
+        """``lambda0=`` for the exponential baseline, else ``baseline=``: the
+        keyword that the simulation engines take for the event-time model. The
+        exponential path keeps its random stream."""
+        if is_exponential(self.baseline):
+            return dict(lambda0=self.lambda0)
+        return dict(baseline=self.baseline)
 
     @property
     def r2_eff(self) -> float:
         return self.r2 if self.n_covariates > 0 else 0.0
 
     def censor_rate_for(self, hr_per_sd: float) -> float:
-        """Marginal censoring probability at a given per-SD HR."""
+        """Marginal censoring probability at a given per-SD HR. A fixed rate must
+        be above the cure fraction of a defective baseline (Gompertz, shape < 0)."""
         if self.accrual_months is None:
-            return DEFAULT_CENSOR_RATE if self.censor_rate is None else self.censor_rate
+            rate = DEFAULT_CENSOR_RATE if self.censor_rate is None else self.censor_rate
+            if not is_exponential(self.baseline):
+                require_censoring_above_cure(self.baseline, np.log(hr_per_sd), rate)
+            return rate
         return censor_rate_from_design(
             hr_per_sd, self.accrual_months, self.followup_months,
-            dropout_annual=self.dropout_annual, lambda0=self.lambda0,
+            dropout_annual=self.dropout_annual, **self.baseline_kwargs(),
         )
 
     def lambda_c_for(self, hr_per_sd: float) -> float:
         """Calibrated exponential censoring rate (per month)."""
         return calibrate_censoring_rate(np.log(hr_per_sd), self.censor_rate_for(hr_per_sd),
-                                        lambda0=self.lambda0)
+                                        **self.baseline_kwargs())
 
     def evaluable(self, n_enrolled: int) -> int:
         return int(np.floor(n_enrolled * (1 - self.non_evaluable)))

@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from .baseline import DEFAULT_LAMBDA0, DEFAULT_MEDIAN_OS_MONTHS, median_os_to_lambda0
-from .dgp import gen_adjustment_covariates, gen_crossing, gen_exponential_ph, gen_waning
+from .baseline import (DEFAULT_LAMBDA0, DEFAULT_MEDIAN_OS_MONTHS, marginal_cure_fraction,
+                       median_os_to_lambda0)
+from .dgp import gen_adjustment_covariates, gen_crossing, gen_ph, gen_waning
 
 
 def calibrate_censoring(
@@ -45,15 +46,28 @@ def calibrate_censoring_for(
     return calibrate_censoring(np.asarray(sampler(n_probe, rng)), target_censor_rate, rng)
 
 
+def require_censoring_above_cure(baseline, log_hr: float, censor_rate: float) -> None:
+    """Raise if the censoring target is not above the marginal cure fraction of a
+    defective baseline: the cured are never observed to fail, so they are always
+    censored, and the censoring calibration has that floor."""
+    cure = marginal_cure_fraction(baseline, log_hr)
+    if cure > 0 and censor_rate <= cure + 1e-3:
+        raise ValueError(f"censor_rate {censor_rate:.3g} must be above the cure fraction "
+                         f"{cure:.3g} of the {baseline.label()} baseline: the cured are "
+                         f"always censored")
+
+
 def calibrate_censoring_rate(
     beta: float,
     target_censor_rate: float,
     lambda0: float = DEFAULT_LAMBDA0,
     n_probe: int = 500_000,
     seed: int = 1,
+    baseline=None,
 ) -> float:
-    """lambda_c for the exponential PH model with per-SD log-HR `beta`."""
-    return calibrate_censoring_for(lambda n, rng: gen_exponential_ph(n, beta, lambda0, rng)[0],
+    """lambda_c for the PH model with per-SD log-HR `beta`: exponential with rate
+    `lambda0`, or with the given `baseline` hazard (`survpower.baseline`)."""
+    return calibrate_censoring_for(lambda n, rng: gen_ph(n, beta, rng, lambda0, baseline)[0],
                                    target_censor_rate, seed=seed, n_probe=n_probe)
 
 
@@ -107,6 +121,7 @@ def censor_rate_from_design(
     lambda0: float = DEFAULT_LAMBDA0,
     n_probe: int = 500_000,
     seed: int = 1,
+    baseline=None,
 ) -> float:
     """Marginal censoring probability implied by a trial calendar.
 
@@ -120,9 +135,13 @@ def censor_rate_from_design(
     matching the event probability is what matters; the exact shape of the
     censoring distribution is second order. In closed form this
     rate is 1 - `event_probability_exponential`.
+
+    Event times are exponential with rate `lambda0`, or follow the given
+    `baseline` hazard (`survpower.baseline`) under PH. A defective baseline's
+    cured patients are always censored.
     """
     rng = np.random.default_rng(seed)
-    T, _ = gen_exponential_ph(n_probe, np.log(hr), lambda0, rng)
+    T, _ = gen_ph(n_probe, np.log(hr), rng, lambda0, baseline)
     C = rng.uniform(followup_months, accrual_months + followup_months, size=n_probe)
     if dropout_annual > 0:
         lam_d = -np.log(1 - dropout_annual) / 12.0

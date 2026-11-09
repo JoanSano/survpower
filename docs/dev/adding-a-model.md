@@ -57,8 +57,8 @@ Moving one of these onto the engine is separate work, done when a feature needs 
    Without one, `method="closed_form"` raises, the `*_closed_form` columns are NaN, and the
    calibration's starting N is reported as a PH approximation (`details["start"]`,
    `"ph_approximation"`). Also check what the closed-form helpers assume beyond PH.
-   `median_split_summary` reports median OS only for `ExponentialPH`, and
-   `censor_rate_from_design` assumes exponential event times.
+   `median_split_summary` reports median OS only for `ExponentialPH` and `PHModel`, and
+   `censor_rate_from_design` draws event times from a PH model (`baseline=`).
 
 5. **Add the CLI flag** to a shared flag group, on the commands whose path supports it
    (#60's rule: assumptions are flags, never commands), and to `cli.DESIGN_FLAGS`.

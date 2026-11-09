@@ -61,7 +61,8 @@ A `Scenario` composes one model per step of the Monte Carlo loop: covariates →
 event times → censoring → analyses. Models are plain objects satisfying the
 protocols below, so a new data-generating option is a new class, not a new
 loop. `simulate_power`, `simulate_continuous_vs_dichotomized` and the unadjusted
-planning modes run on it, through `scenario_for`.
+planning modes run on it, through `scenario_for`. `PHModel` takes any baseline hazard
+from `survpower.baseline`; `ExponentialPH` is the default design's.
 
 ```python
 import numpy as np
@@ -93,7 +94,8 @@ cohort["event"].mean()   # close to 1 - censor_rate
     options:
       members: [Scenario, simulate, simulate_cohort, run_replicates, Replicates, Effect, scenario_for, Covariates,
                 CovariateModel, EventTimeModel, CensoringModel, Analysis,
-                StandardNormal, CorrelatedCovariates, ExponentialPH, ExponentialCensoring, CoxWald, LogRank]
+                StandardNormal, CorrelatedCovariates, ExponentialPH, PHModel, ExponentialCensoring,
+                CoxWald, LogRank]
 
 ## Simulation engines
 

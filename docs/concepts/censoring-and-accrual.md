@@ -24,7 +24,10 @@ T \sim \text{Exp}\!\left(\lambda_0 e^{\beta X}\right), \qquad
 C \sim \text{Exp}(\lambda_c),
 \]
 
-and we observe \(\min(T, C)\), with an event when \(T \le C\). \(C\) has the
+and we observe \(\min(T, C)\), with an event when \(T \le C\). (This is the default,
+constant baseline hazard. With [another baseline](#shape-of-the-baseline-hazard), \(T\) has
+hazard \(h_0(t) e^{\beta X}\) and the formula below has no closed form, but censoring is
+generated and calibrated the same way.) \(C\) has the
 same rate \(\lambda_c\) for every patient and does not depend on \(T\) or
 \(X\), so censoring is independent and non-informative. Whichever clock runs
 out first wins. For one patient,
@@ -68,8 +71,9 @@ censor:
   (withdrawal, moving away) belongs in \(d\).
 * The calendar's censoring time is \(\min(C_{\text{adm}}, \text{dropout})\).
 
-`censor_rate_from_design` computes the fraction this censors by Monte Carlo,
-and `event_probability_exponential` computes it in closed form (below). Only
+`censor_rate_from_design` computes the fraction this censors by Monte Carlo, under
+the design's baseline hazard, and `event_probability_exponential` computes it in
+closed form (below) for the constant one. Only
 that fraction is passed to the simulations, which then use exponential
 censoring as described above.
 
@@ -213,7 +217,9 @@ inflated to \(N_{\text{enrolled}} = \lceil N_{\text{eval}} / (1 - f) \rceil\).
 
 ## Baseline median survival
 
-`--median-os` sets \(\lambda_0 = \ln 2 / \text{median OS}\). For PH analyses,
+`--median-os` is the baseline median. For the default constant hazard it sets
+\(\lambda_0 = \ln 2 / \text{median OS}\); every other baseline family is calibrated to it
+too (below). For PH analyses,
 power and N are **exactly invariant** to it: Cox regression uses only the
 ordering of times, and the censoring calibration rescales with \(\lambda_0\).
 It matters when:

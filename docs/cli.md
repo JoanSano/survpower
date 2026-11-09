@@ -54,7 +54,7 @@ On every command.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--median-os` | 15 | baseline median overall survival, months |
+| `--median-os` | 15 | baseline median overall survival, months; not with `--baseline-data`, which estimates it |
 | `--biomarker-sd SD` | | SD of the raw biomarker; `--hr` is then per raw unit |
 | `--non-evaluable` | 0 | fraction of enrolled patients with no usable biomarker value |
 | `--censor-rate` | 0.20 | marginal censoring probability (alternative to the accrual design) |
@@ -69,6 +69,8 @@ On every command. Not with `--sensitivity`, whose scenarios have a constant base
 |---|---|---|
 | `--baseline {exponential,weibull,gompertz,loglogistic}` | exponential | shape of the baseline hazard, calibrated so that the baseline median is `--median-os` |
 | `--baseline-shape K` | | required with a non-exponential `--baseline`: `k` for `weibull` and `loglogistic`; for `gompertz`, `a` per month (the hazard is multiplied by e^(12a) each year; `a < 0` gives a cure fraction) |
+| `--baseline-data CSV` | | estimate the baseline from a cohort instead (Breslow's estimator); the median OS comes from the data, so it cannot be combined with `--median-os`, `--baseline` or `--baseline-shape` |
+| `--baseline-columns TIME EVENT [BIOMARKER]` | `os status` | the columns of `--baseline-data`; with a biomarker column, the baseline is that of a patient with the mean biomarker |
 
 A piecewise-exponential or user-supplied hazard is available from Python only; see
 [the shape of the baseline hazard](concepts/censoring-and-accrual.md#shape-of-the-baseline-hazard).

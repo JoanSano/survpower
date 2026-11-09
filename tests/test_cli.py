@@ -279,7 +279,7 @@ def test_baseline_reaches_concordance_and_adjusted_commands(tmp_path):
     (["--baseline", "weibull", "--baseline-shape", "-1"], "--baseline-shape"),
     (["--baseline", "gompertz", "--baseline-shape", "100"], "--baseline-shape"),
     (["--baseline", "weibull", "--baseline-shape", "1.5", "--sensitivity", "epv"],
-     "--sensitivity supports only --baseline exponential"),
+     "--sensitivity supports only the exponential baseline"),
     (["--baseline", "gompertz", "--baseline-shape", "-0.08"], "above the cure fraction"),
 ])
 def test_baseline_flag_errors(args, message, capsys):
@@ -288,3 +288,59 @@ def test_baseline_flag_errors(args, message, capsys):
     assert exc.value.code == 2
     assert message in capsys.readouterr().err
 
+
+# --- a baseline estimated from a cohort (#84) ------------------------------------------
+
+def _cohort_csv(tmp_path, n=300, biomarker=True):
+    import numpy as np
+    rng = np.random.default_rng(3)
+    x = rng.normal(5, 2, n)
+    T = rng.weibull(1.4, n) * 20 * np.exp(-0.2 * (x - 5) / 2 / 1.4)
+    C = rng.exponential(40, n)
+    df = pd.DataFrame(dict(OS=np.maximum(np.round(np.minimum(T, C), 1), 0.1),
+                           status=(T <= C).astype(int)))
+    if biomarker:
+        df["ki67"] = x
+    path = tmp_path / "cohort.csv"
+    df.to_csv(path, index=False)
+    return str(path)
+
+
+def test_baseline_from_data(tmp_path, capsys):
+    csv = _cohort_csv(tmp_path)
+    run(tmp_path, "power", "--hr", "1.3", "--n", "150", "--baseline-data", csv,
+        "--baseline-columns", "OS", "status", "ki67")
+    out = capsys.readouterr().out
+    assert "Breslow from cohort.csv" in out and "biomarker ki67: fitted HR per SD" in out
+    assert pd.read_csv(tmp_path / "power_analysis.csv")["power_sim"].between(0, 1).all()
+
+
+def test_baseline_from_data_without_a_biomarker(tmp_path, capsys):
+    csv = _cohort_csv(tmp_path, biomarker=False)
+    run(tmp_path, "precision", "--c-index", "0.7", "--n", "100", "--baseline-data", csv,
+        "--baseline-columns", "OS", "status")
+    assert "Nelson-Aalen" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("args, message", [
+    (["--baseline-columns", "OS", "status", "ki67", "--median-os", "12"],
+     "--median-os would have no effect"),
+    (["--baseline-columns", "OS", "status", "--baseline", "weibull", "--baseline-shape", "1.2"],
+     "replaces --baseline"),
+    ([], "no column(s) os"),
+    (["--baseline-columns", "OS"], "TIME EVENT [BIOMARKER]"),
+    (["--baseline-columns", "OS", "status", "--sensitivity", "epv"],
+     "--sensitivity supports only the exponential baseline"),
+])
+def test_baseline_data_errors(tmp_path, args, message, capsys):
+    csv = _cohort_csv(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        main(["power", "--hr", "1.3", "--n", "150", "--baseline-data", csv, *args])
+    assert exc.value.code == 2
+    assert message in capsys.readouterr().err
+
+
+def test_baseline_columns_need_baseline_data(capsys):
+    with pytest.raises(SystemExit):
+        main(["power", "--hr", "1.3", "--n", "150", "--baseline-columns", "a", "b"])
+    assert "only applies to --baseline-data" in capsys.readouterr().err

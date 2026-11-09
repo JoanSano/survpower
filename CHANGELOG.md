@@ -12,6 +12,11 @@
   `--sensitivity`, which raises. `scenario.PHModel` samples PH event times by inverting the
   cumulative hazard; `marginal_median` gives the median over the biomarker. With no
   `baseline`, results at fixed seeds are unchanged.
+- **A baseline estimated from a cohort** (#84): `EmpiricalBaseline.from_data(time, event,
+  biomarker=None)` gives Breslow's baseline cumulative hazard at the mean biomarker
+  (Nelson-Aalen without one), interpolated between event times, with a constant-hazard
+  tail. From the CLI: `--baseline-data cohort.csv --baseline-columns TIME EVENT [BIOMARKER]`;
+  the median OS then comes from the data. `--median-os` now defaults to unset (15 months).
 - `censor_rate_from_design`, `calibrate_censoring_rate`, the concordance limits and
   simulations, `simulate_power`, `simulate_power_design`, `simulate_power_with_adjustment`
   and `simulate_continuous_vs_dichotomized` take a `baseline=` keyword. `harrell_limit`

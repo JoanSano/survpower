@@ -8,8 +8,10 @@ The biomarker \(X\) is standardized, \(X \sim \mathcal N(0,1)\), and the hazard 
 h(t \mid X) = h_0(t)\, e^{\beta X}, \qquad \mathrm{HR} = e^{\beta}\ \text{per SD of } X .
 \]
 
-Data are simulated with a constant baseline hazard \(h_0 = \lambda_0 = \ln 2 / \text{median OS}\),
-so \(T \mid X \sim \text{Exponential}(\lambda_0 e^{\beta X})\) is an exact Cox model.
+By default, data are simulated with a constant baseline hazard
+\(h_0 = \lambda_0 = \ln 2 / \text{median OS}\), so \(T \mid X \sim \text{Exponential}(\lambda_0 e^{\beta X})\)
+is an exact Cox model. Any other [baseline hazard](censoring-and-accrual.md#shape-of-the-baseline-hazard)
+keeps the model an exact Cox model with the same HR: only \(h_0(t)\) changes.
 
 ## Per SD vs. per raw unit
 

@@ -7,6 +7,7 @@ binomial MCSEs at analytic quantiles, and Cox's invariance to monotone maps of t
 import json
 
 import numpy as np
+import pandas as pd
 import pytest
 from scipy import integrate, optimize, stats
 
@@ -15,6 +16,7 @@ from survpower.baseline import (
     LN2,
     Exponential,
     Gompertz,
+    EmpiricalBaseline,
     LogLogistic,
     NumericBaseline,
     PiecewiseExponential,
@@ -49,6 +51,17 @@ from survpower.scenario import (
 
 M = 15.0
 BETA = np.log(1.3)
+def _weibull_cohort(n, beta, seed, censor_scale=40.0):
+    """(time, event, biomarker) from Weibull(15, 1.4) PH in a raw biomarker with mean 5 and
+    SD 2, beta per SD; times rounded to 0.1 month, so there are ties."""
+    rng = np.random.default_rng(seed)
+    x = rng.normal(5.0, 2.0, n)
+    z = (x - 5.0) / 2.0
+    T = Weibull(M, 1.4).inv_cumhaz(rng.standard_exponential(n) * np.exp(-beta * z))
+    C = rng.exponential(censor_scale, n)
+    return np.maximum(np.round(np.minimum(T, C), 1), 0.1), (T <= C).astype(int), x
+
+
 FAMILIES = {
     "exponential": Exponential(M),
     "weibull_rising": Weibull(M, 1.5),
@@ -58,6 +71,7 @@ FAMILIES = {
     "piecewise": PiecewiseExponential(M, (6, 12), (1.0, 1.5, 2.0)),
     "loglogistic": LogLogistic(M, 1.5),
     "numeric": NumericBaseline(lambda t: 1.0 + 0.05 * t, M),
+    "empirical": EmpiricalBaseline.from_data(*_weibull_cohort(400, 0.3, seed=11)),
 }
 PROPER = {k: v for k, v in FAMILIES.items() if v.cure_fraction == 0}
 FEW = dict(n_sims=30, n_sims_grid=20, seed=5)
@@ -81,9 +95,10 @@ def test_inv_cumhaz_inverts_cumhaz(name):
 @pytest.mark.parametrize("name", FAMILIES)
 def test_the_baseline_median_is_median_os(name):
     b = FAMILIES[name]
-    assert b.median == M
-    assert b.cumhaz(np.array(M)) == pytest.approx(LN2, rel=1e-12)
-    assert b.inv_cumhaz(np.array(LN2)) == pytest.approx(M, rel=1e-10)
+    m = M if name != "empirical" else b.median  # an estimated median
+    assert b.median == pytest.approx(m, rel=1e-15)
+    assert b.cumhaz(np.array(m)) == pytest.approx(LN2, rel=1e-12)
+    assert b.inv_cumhaz(np.array(LN2)) == pytest.approx(m, rel=1e-10)
 
 
 @pytest.mark.parametrize("b, ref", [
@@ -364,3 +379,84 @@ def test_accrual_design_with_a_baseline():
     assert design.censor_rate_for(1.3) != StudyDesign(accrual_months=24,
                                                       followup_months=12).censor_rate_for(1.3)
 
+
+# --- the Breslow baseline of a cohort (#84) -----------------------------------------------
+
+def _no_ties(n=300, seed=12):
+    t, d, x = _weibull_cohort(n, 0.3, seed)
+    return t + np.random.default_rng(seed).uniform(0, 1e-3, n), d, x  # break the ties
+
+
+def test_breslow_matches_lifelines():
+    from lifelines import CoxPHFitter
+    t, d, x = _no_ties()
+    b, info = EmpiricalBaseline.from_data_info(t, d, x)
+    z = (x - x.mean()) / x.std(ddof=1)
+    cph = CoxPHFitter().fit(pd.DataFrame(dict(time=t, event=d, z=z)), "time", "event")
+    expected = cph.baseline_cumulative_hazard_.iloc[:, 0].loc[list(b.times)].to_numpy()
+    np.testing.assert_allclose(b.cumhaz_values, expected, rtol=1e-10)
+    assert info["beta_hat"] == pytest.approx(cph.params_["z"])
+    assert (info["n"], info["events"]) == (300, int(d.sum()))
+
+
+def test_without_a_biomarker_it_is_nelson_aalen():
+    from lifelines import NelsonAalenFitter
+    t, d, _ = _weibull_cohort(300, 0.3, seed=13)  # with ties
+    b = EmpiricalBaseline.from_data(t, d)
+    na = NelsonAalenFitter(nelson_aalen_smoothing=False).fit(t, d).cumulative_hazard_.iloc[:, 0]
+    np.testing.assert_allclose(b.cumhaz_values, na.loc[list(b.times)].to_numpy(), rtol=1e-12)
+
+
+def test_interpolation_and_tail():
+    b = EmpiricalBaseline(times=(2.0, 5.0), cumhaz_values=(0.2, 0.5), tail_hazard=0.25)
+    t = np.array([1.0, 2.0, 3.5, 5.0, 9.0])
+    np.testing.assert_allclose(b.cumhaz(t), [0.1, 0.2, 0.35, 0.5, 1.5])
+    np.testing.assert_allclose(b.hazard(t), [0.1, 0.1, 0.1, 0.25, 0.25])
+    np.testing.assert_allclose(b.inv_cumhaz(b.cumhaz(t)), t)
+    assert b.median == pytest.approx(5 + (LN2 - 0.5) / 0.25) and not b.median_estimated
+
+
+def test_default_tail_is_the_hazard_over_the_last_events():
+    t = np.arange(1.0, 31.0)
+    b = EmpiricalBaseline.from_data(t, np.ones(30))
+    k = 10  # the last 10 events are at 21..30: the window starts at the event time 20
+    H = np.array(b.cumhaz_values)
+    assert b.tail_hazard == pytest.approx((H[-1] - H[-1 - k]) / (30 - 20))
+    assert EmpiricalBaseline.from_data(t, np.ones(30), tail_hazard=0.3).tail_hazard == 0.3
+
+
+@pytest.mark.slow
+def test_breslow_recovers_the_true_baseline():
+    """A large Weibull PH cohort: H0 and the per-SD HR within sampling error of the truth."""
+    t, d, x = _weibull_cohort(20_000, 0.3, seed=14, censor_scale=60.0)
+    b, info = EmpiricalBaseline.from_data_info(t, d, x)
+    assert abs(info["beta_hat"] - 0.3) < 4 * info["se"]
+    for s in (3.0, 10.0, 15.0, 25.0):
+        assert b.cumhaz(np.array(s)) == pytest.approx(Weibull(M, 1.4).cumhaz(np.array(s)),
+                                                        rel=0.05)
+    assert b.median == pytest.approx(M, rel=0.03)
+
+
+@pytest.mark.parametrize("kwargs, match", [
+    (dict(time=[1.0, 2.0, -1.0], event=[1, 1, 0]), "positive"),
+    (dict(time=[1.0, 2.0, 3.0], event=[1, 2, 0]), "0 or 1"),
+    (dict(time=[1.0, 2.0, 3.0], event=[1, 0, 0]), "two distinct event times"),
+    (dict(time=[1.0, 2.0, 3.0], event=[1, 1, 0], biomarker=[2.0, 2.0, 2.0]), "constant"),
+])
+def test_from_data_validates(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        EmpiricalBaseline.from_data(**kwargs)
+
+
+def test_missing_rows_are_dropped():
+    t, d, x = _no_ties(100)
+    x = x.copy(); x[:5] = np.nan
+    assert EmpiricalBaseline.from_data_info(t, d, x)[1]["n"] == 95
+
+
+def test_planning_with_an_empirical_baseline():
+    b = EmpiricalBaseline.from_data(*_weibull_cohort(400, 0.3, seed=15))
+    design = StudyDesign(median_os=b.median, baseline=b, **FEW)
+    row = run_power_mode(design, [1.3], [150]).iloc[0]
+    assert 0 < row["power_sim"] <= 1 and np.isfinite(row["split_median_os_low"])
+    assert hash(design) and baseline_from_dict(json.loads(json.dumps(b.to_dict()))) == b

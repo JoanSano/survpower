@@ -97,10 +97,14 @@ development, use the selector next to the site title.
 * One continuous biomarker, approximately normal after any transform; effects
   are proportional hazards unless you run the [non-PH sensitivity
   analyses](concepts/ph-violations.md).
-* A constant baseline hazard calibrated to a median overall survival
-  (default 15 months, typical of glioblastoma). For a proportional-hazards
-  analysis, power and N do not depend on this choice. Only the non-PH
-  scenarios, which use fixed clinical time windows, do.
+* A baseline hazard calibrated to a median overall survival (default 15
+  months, typical of glioblastoma): constant by default, or Weibull, Gompertz,
+  log-logistic, piecewise exponential or any shape you supply, or estimated from
+  a cohort with Breslow's estimator (see [the shape of the baseline
+  hazard](concepts/censoring-and-accrual.md#shape-of-the-baseline-hazard)).
+  For a proportional-hazards analysis at a fixed censored fraction, power and N
+  barely depend on this choice. The accrual calendar and the non-PH scenarios,
+  which use fixed clinical time windows, do.
 * Independent censoring, given directly or derived from accrual, follow-up and
   dropout.
 * Time is in months throughout.

@@ -24,7 +24,10 @@ T \sim \text{Exp}\!\left(\lambda_0 e^{\beta X}\right), \qquad
 C \sim \text{Exp}(\lambda_c),
 \]
 
-and we observe \(\min(T, C)\), with an event when \(T \le C\). \(C\) has the
+and we observe \(\min(T, C)\), with an event when \(T \le C\). (This is the default,
+constant baseline hazard. With [another baseline](#shape-of-the-baseline-hazard), \(T\) has
+hazard \(h_0(t) e^{\beta X}\) and the formula below has no closed form, but censoring is
+generated and calibrated the same way.) \(C\) has the
 same rate \(\lambda_c\) for every patient and does not depend on \(T\) or
 \(X\), so censoring is independent and non-informative. Whichever clock runs
 out first wins. For one patient,
@@ -68,8 +71,9 @@ censor:
   (withdrawal, moving away) belongs in \(d\).
 * The calendar's censoring time is \(\min(C_{\text{adm}}, \text{dropout})\).
 
-`censor_rate_from_design` computes the fraction this censors by Monte Carlo,
-and `event_probability_exponential` computes it in closed form (below). Only
+`censor_rate_from_design` computes the fraction this censors by Monte Carlo, under
+the design's baseline hazard, and `event_probability_exponential` computes it in
+closed form (below) for the constant one. Only
 that fraction is passed to the simulations, which then use exponential
 censoring as described above.
 
@@ -213,7 +217,10 @@ inflated to \(N_{\text{enrolled}} = \lceil N_{\text{eval}} / (1 - f) \rceil\).
 
 ## Baseline median survival
 
-`--median-os` sets \(\lambda_0 = \ln 2 / \text{median OS}\). For PH analyses,
+`--median-os` is the baseline median. For the default constant hazard it sets
+\(\lambda_0 = \ln 2 / \text{median OS}\); every other baseline family is calibrated to it
+too (below), and a baseline [estimated from a cohort](#a-baseline-estimated-from-a-cohort)
+brings its own. For PH analyses,
 power and N are **exactly invariant** to it: Cox regression uses only the
 ordering of times, and the censoring calibration rescales with \(\lambda_0\).
 It matters when:
@@ -260,6 +267,41 @@ hazard puts more of the events inside the follow-up window.
 fails (a cure fraction, \(T = \infty\)). Calibrated to a median, that fraction is always
 below 1/2. The cured are always censored, so the censored fraction cannot be set below
 their share; a lower `--censor-rate` raises an error.
+
+### A baseline estimated from a cohort
+
+With a cohort at hand (a CSV of follow-up, status and, ideally, the biomarker), the
+baseline can be estimated rather than assumed:
+
+```bash
+survpower sample-size --hr 1.3 --baseline-data cohort.csv --baseline-columns os status ki67
+```
+
+```python
+import pandas as pd
+from survpower import EmpiricalBaseline, StudyDesign, sample_size
+df = pd.read_csv("cohort.csv")
+b, info = EmpiricalBaseline.from_data_info(df.os, df.status, df.ki67)
+design = StudyDesign(median_os=b.median, baseline=b)
+```
+
+With the biomarker, it is standardized and a Cox model is fitted; Breslow's estimator then
+gives the cumulative hazard of a patient with the **mean biomarker**, which is the baseline
+the simulations multiply by \(e^{\beta X}\):
+
+\[
+\hat H_0(t) = \sum_{t_i \le t} \frac{d_i}{\sum_{j \in R(t_i)} e^{\hat\beta z_j}}.
+\]
+
+Without the biomarker, \(\hat\beta = 0\): this is the Nelson–Aalen estimate of the cohort's
+*marginal* cumulative hazard (the Kaplan–Meier curve's), which is not the baseline when the
+biomarker matters, though it is close for a small effect.
+
+\(\hat H_0\) is interpolated linearly between event times (a constant hazard between them).
+Past the last event it is extrapolated at the average hazard of the last 10 events; the
+output says when the median lies in that extrapolated tail. The fitted HR in the cohort is
+reported for reference: the planning HR is still the one you give. The estimate is treated
+as known, so its own uncertainty is not part of the power.
 
 `--sensitivity` still needs the exponential baseline. The waning and crossing scenarios
 have their own constant baseline.

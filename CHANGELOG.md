@@ -28,7 +28,24 @@
   and censoring calibration as `simulate` (#78). `scenario.CorrelatedCovariates` gives
   scenarios adjustment covariates with a target R² on X.
 
+- **Censoring models** (#16), in `survpower.scenario`: `WeibullCensoring(target_rate, shape)`
+  and `PiecewiseCensoring(target_rate, breaks, relative_rates)` are calibrated to the
+  censored fraction, like `ExponentialCensoring`, with an exact (no Monte Carlo noise)
+  calibration of the scale. `CalendarCensoring(accrual_months, followup_months,
+  dropout_annual, dropout_shape)` simulates the trial calendar directly, and
+  `EmpiricalCensoring.from_data(time, event)` draws from a cohort's reverse Kaplan–Meier.
+  Neither is calibrated: the censored fraction is an output. `StudyDesign` gains
+  `censoring_model` (`"exponential"`, `"calendar"`, `"empirical"`), `censoring_shape` and
+  `censoring_data`. The CLI has `--censoring-model {exponential,calendar,empirical}` (empirical
+  uses `--baseline-data`) and `--censoring-shape K`. They apply to unadjusted analyses on
+  `power`, `sample-size` and `detectable-effect`; the other paths raise.
+- Every simulation output reports the realized censored fraction, `censor_rate_realized`,
+  with its MCSE (`results.censoring_columns`).
+
 ### Changed
+- The default `censoring_model` stays `"exponential"`, so results at fixed seeds do not
+  change. **A later minor release will make `"calendar"` the default when an accrual design
+  is given**, which will change results for `--accrual-months` (#16).
 - `StudyDesign.lambda0` raises for a non-exponential baseline, pointing to
   `StudyDesign.baseline`. `require_default_models` takes `supports=`, the model fields a
   path honours.

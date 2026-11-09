@@ -13,7 +13,12 @@ from .baseline import (DEFAULT_CENSOR_RATE, DEFAULT_MEDIAN_OS_MONTHS, Exponentia
 from .censoring import (calibrate_censoring_rate, censor_rate_from_design,
                         require_censoring_above_cure)
 from .concordance import ESTIMATORS, c_of_beta
+from .dgp import gen_ph
 from .fitting import ENGINES
+from .scenario import CalendarCensoring, EmpiricalCensoring, ExponentialCensoring, WeibullCensoring
+
+#: The values of `StudyDesign.censoring_model`.
+CENSORING_MODELS = ("exponential", "calendar", "empirical")
 
 
 def _require(condition: bool, message: str) -> None:
@@ -45,6 +50,19 @@ class StudyDesign:
                        censoring is then derived with
                        `censor_rate_from_design`.
     dropout_annual   : annual loss-to-follow-up fraction (accrual design only).
+    censoring_model  : how censoring times are simulated (#16):
+                       "exponential" (default): exponential censoring
+                         calibrated to the censored fraction, which an
+                         accrual design only sets;
+                       "calendar": the accrual design simulated directly
+                         (`scenario.CalendarCensoring`); the censored fraction
+                         is an output;
+                       "empirical": drawn from `censoring_data`, the reverse
+                         Kaplan-Meier of a cohort; the fraction is an output.
+    censoring_shape  : Weibull censoring, H_C(t) = lambda_c t^k with this k,
+                       calibrated to a fixed censor_rate
+                       (`scenario.WeibullCensoring`); "exponential" model only.
+    censoring_data   : `scenario.EmpiricalCensoring` for "empirical".
     non_evaluable    : fraction of enrolled patients without a usable
                        biomarker value (missing tissue, assay failure, ...).
     n_covariates, r2 : adjustment covariates and the multiple R^2 of the
@@ -71,6 +89,9 @@ class StudyDesign:
     accrual_months: float | None = None
     followup_months: float | None = None
     dropout_annual: float = 0.0
+    censoring_model: str = "exponential"
+    censoring_shape: float | None = None
+    censoring_data: EmpiricalCensoring | None = None
     non_evaluable: float = 0.0
     n_covariates: int = 0
     r2: float = 0.0
@@ -104,6 +125,7 @@ class StudyDesign:
                  "(with censor_rate, include dropout in the censoring rate)")
         if self.censor_rate is not None:
             _require(0 <= self.censor_rate < 1, "censor_rate must be in [0, 1)")
+        self._validate_censoring(has_accrual)
         for name in ("dropout_annual", "non_evaluable", "r2"):
             _require(0 <= getattr(self, name) < 1, f"{name} must be in [0, 1)")
 
@@ -127,11 +149,64 @@ class StudyDesign:
                      f"baseline median ({self.baseline.median:g}) must equal median_os "
                      f"({self.median_os:g}): give median_os={self.baseline.median:g} too")
 
+    def _validate_censoring(self, has_accrual: bool) -> None:
+        model = self.censoring_model
+        _require(model in CENSORING_MODELS, f"censoring_model must be one of {CENSORING_MODELS}")
+        _require(model != "calendar" or has_accrual,
+                 "censoring_model 'calendar' requires accrual_months and followup_months")
+        _require((model == "empirical") == (self.censoring_data is not None),
+                 "censoring_model 'empirical' and censoring_data must be given together")
+        if model == "empirical":
+            _require(isinstance(self.censoring_data, EmpiricalCensoring),
+                     "censoring_data must be a scenario.EmpiricalCensoring")
+            _require(not has_accrual and self.censor_rate is None,
+                     "censoring_model 'empirical' sets the censoring: give neither censor_rate "
+                     "nor accrual_months/followup_months")
+        if self.censoring_shape is not None:
+            _require(_is_positive(self.censoring_shape),
+                     "censoring_shape must be positive and finite")
+            _require(model == "exponential" and not has_accrual,
+                     "censoring_shape applies to a fixed censor_rate (not with an "
+                     "accrual/follow-up design or another censoring_model)")
+            _require(self.censor_rate != 0, "censoring_shape needs a censor_rate above 0")
+
+    @property
+    def censoring_calibrated(self) -> bool:
+        """Whether censoring is calibrated to a target fraction (exponential or Weibull),
+        rather than simulated with the fraction as an output (calendar, empirical)."""
+        return self.censoring_model == "exponential"
+
     def non_default_models(self) -> tuple:
         """Names of the fields that select a model other than exponential PH with
-        exponential censoring: ``baseline`` when it is not exponential. #16 adds
-        censoring models."""
-        return () if is_exponential(self.baseline) else ("baseline",)
+        exponential censoring: ``baseline`` when it is not exponential, and
+        ``censoring`` for another censoring model or shape."""
+        out = () if is_exponential(self.baseline) else ("baseline",)
+        if self.censoring_model != "exponential" or self.censoring_shape is not None:
+            out += ("censoring",)
+        return out
+
+    def censoring_for(self, censor_rate: float):
+        """The censoring model (`survpower.scenario`): calibrated to `censor_rate` when
+        `censoring_calibrated`, else the calendar or the cohort's censoring, which
+        ignore it."""
+        if self.censoring_model == "calendar":
+            return CalendarCensoring(self.accrual_months, self.followup_months,
+                                     dropout_annual=self.dropout_annual)
+        if self.censoring_model == "empirical":
+            return self.censoring_data
+        if self.censoring_shape is not None:
+            return WeibullCensoring(target_rate=censor_rate, shape=self.censoring_shape)
+        return ExponentialCensoring(target_rate=censor_rate)
+
+    def censoring_label(self) -> str:
+        """The censoring model, for summaries."""
+        if self.censoring_model == "calendar":
+            return "calendar simulated directly (uniform entry, fixed analysis date)"
+        if self.censoring_model == "empirical":
+            return self.censoring_data.label()
+        if self.censoring_shape is not None:
+            return f"Weibull, shape {self.censoring_shape:g}, calibrated to the fraction"
+        return "exponential, calibrated to the fraction"
 
     def require_default_models(self, path: str, supports: tuple = ()) -> None:
         """Raise if `path` cannot honour this design's models. Every path that is
@@ -169,9 +244,15 @@ class StudyDesign:
     def r2_eff(self) -> float:
         return self.r2 if self.n_covariates > 0 else 0.0
 
-    def censor_rate_for(self, hr_per_sd: float) -> float:
+    def censor_rate_for(self, hr_per_sd: float, n_probe: int = 500_000, seed: int = 1) -> float:
         """Marginal censoring probability at a given per-SD HR. A fixed rate must
-        be above the cure fraction of a defective baseline (Gompertz, shape < 0)."""
+        be above the cure fraction of a defective baseline (Gompertz, shape < 0).
+        For "empirical" censoring, the expected fraction over a probe sample of
+        event times."""
+        if self.censoring_model == "empirical":
+            T, _ = gen_ph(n_probe, np.log(hr_per_sd), np.random.default_rng(seed),
+                          **self.baseline_kwargs())
+            return float(np.mean(self.censoring_data.probability_before(T)))
         if self.accrual_months is None:
             rate = DEFAULT_CENSOR_RATE if self.censor_rate is None else self.censor_rate
             if not is_exponential(self.baseline):
@@ -183,7 +264,11 @@ class StudyDesign:
         )
 
     def lambda_c_for(self, hr_per_sd: float) -> float:
-        """Calibrated exponential censoring rate (per month)."""
+        """Calibrated exponential censoring rate (per month). Only exponential censoring
+        has one."""
+        if "censoring" in self.non_default_models():
+            raise ValueError(f"lambda_c is only defined for exponential censoring; this "
+                             f"design's censoring is {self.censoring_label()}")
         return calibrate_censoring_rate(np.log(hr_per_sd), self.censor_rate_for(hr_per_sd),
                                         **self.baseline_kwargs())
 

@@ -60,6 +60,14 @@ On every command.
 | `--censor-rate` | 0.20 | marginal censoring probability (alternative to the accrual design) |
 | `--accrual-months`, `--followup-months` | | uniform accrual period and minimum follow-up after the last enrolment |
 | `--dropout` | 0 | annual loss-to-follow-up fraction (with the accrual design) |
+| `--censoring-model {exponential,calendar,empirical}` | exponential | how censoring times are simulated. `exponential`: calibrated to the censored fraction, which the accrual design only sets. `calendar`: the accrual design simulated directly (uniform entry, analysis `--followup-months` after the last enrolment, exponential dropout). `empirical`: the censoring of `--baseline-data`, by reverse Kaplan–Meier. For `calendar` and `empirical` the censored fraction is an output |
+| `--censoring-shape K` | | Weibull censoring with shape `K` (`K > 1` censors late), calibrated to `--censor-rate`; not with the accrual design |
+
+`--censoring-model` and `--censoring-shape` apply to unadjusted analyses on `power`,
+`sample-size` and `detectable-effect`. Adjusted analyses (`--n-covariates`),
+`--sensitivity`, `benchmark` and `precision` support only exponential censoring, and
+exit with an error otherwise. Weibull dropout and piecewise censoring are available from
+Python only (`CalendarCensoring(dropout_shape=...)`, `PiecewiseCensoring`).
 
 ## Event model
 

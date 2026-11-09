@@ -80,10 +80,10 @@ class _DesignWithModel(StudyDesign):
 
 @dataclass(frozen=True)
 class _DesignWithOtherModel(StudyDesign):
-    """A design with a model field that no path honours yet (#16 adds censoring models)."""
+    """A design with a model field that no path honours yet (#18 adds covariate models)."""
 
     def non_default_models(self):
-        return ("censoring",)
+        return ("biomarker_distribution",)
 
 
 # --- scenario_for ------------------------------------------------------------------
@@ -119,7 +119,8 @@ def test_scenario_for_uses_the_censoring_at_the_effect():
 def test_scenario_for_refuses_what_it_cannot_build():
     with pytest.raises(ValueError, match="n_covariates"):
         scenario_for(StudyDesign(n_covariates=2), Effect.hr(1.2))
-    with pytest.raises(ValueError, match="censoring"):  # a new field cannot have no effect
+    # a new field cannot have no effect
+    with pytest.raises(ValueError, match="biomarker_distribution"):
         scenario_for(_DesignWithOtherModel(), Effect.hr(1.2))
 
 
@@ -259,14 +260,14 @@ def test_other_paths_raise_naming_the_option(name):
 @pytest.mark.parametrize("name", HONOUR_BASELINE)
 def test_paths_that_honour_the_baseline_still_raise_for_other_models(name):
     run, kwargs = HONOUR_BASELINE[name]
-    with pytest.raises(ValueError, match="censoring"):
+    with pytest.raises(ValueError, match="biomarker_distribution"):
         run(_DesignWithOtherModel(**FEW, **kwargs))
 
 
 def test_unadjusted_paths_raise_until_scenario_for_builds_the_model():
     """Without the monkeypatch, no path silently gives an exponential answer."""
     for run in SUPPORTS.values():
-        with pytest.raises(ValueError, match="censoring"):
+        with pytest.raises(ValueError, match="biomarker_distribution"):
             run(_DesignWithOtherModel(**FEW))
 
 

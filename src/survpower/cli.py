@@ -28,7 +28,7 @@ from . import __version__
 from .baseline import (DEFAULT_CENSOR_RATE, DEFAULT_MEDIAN_OS_MONTHS, DEFAULT_TAU_MONTHS, FAMILIES,
                        SHAPE_FAMILIES, EmpiricalBaseline)
 from .concordance import ESTIMATORS, hr_of_c
-from .design import StudyDesign
+from .design import CENSORING_MODELS, StudyDesign
 from .fitting import ENGINES
 from .planning import (
     run_cindex_benchmark_mode,
@@ -37,6 +37,7 @@ from .planning import (
     run_power_mode,
     run_sample_size_mode,
 )
+from .scenario import EmpiricalCensoring
 from .sensitivity import SENSITIVITY_CHOICES, run_sensitivity
 
 QUICK_SIMS = {"n_sims": 200, "n_sims_grid": 100, "n_sims_sensitivity": 100}
@@ -137,6 +138,17 @@ def _flag_groups() -> dict:
             (["--dropout"], dict(type=float, default=0.0,
                                  help="annual loss-to-follow-up fraction (with the accrual "
                                       "design)")),
+            (["--censoring-model"], dict(choices=CENSORING_MODELS, default="exponential",
+                                         help="exponential: censoring calibrated to the "
+                                              "fraction, which the accrual design only sets; "
+                                              "calendar: the accrual design simulated directly; "
+                                              "empirical: the censoring of --baseline-data "
+                                              "(reverse Kaplan-Meier). For calendar and "
+                                              "empirical the censored fraction is an output")),
+            (["--censoring-shape"], dict(type=float, default=None, metavar="K",
+                                         help="Weibull censoring with shape K (H_C ~ t^K; >1 "
+                                              "censors late), calibrated to --censor-rate "
+                                              "[default: exponential, K = 1]")),
         ),
         adjustment=_group(
             "adjustment",
@@ -277,10 +289,12 @@ DESIGN_FLAGS = {
     "non_evaluable": "--non-evaluable", "n_covariates": "--n-covariates", "r2": "--r2",
     "biomarker_sd": "--biomarker-sd", "c_estimator": "--c-estimator", "c_tau": "--c-tau",
     "engine": "--engine", "n_sims": "--n-sims", "n_sims_grid": "--n-sims-grid", "seed": "--seed",
-    "baseline": "--baseline",
+    "baseline": "--baseline", "censoring_model": "--censoring-model",
+    "censoring_shape": "--censoring-shape", "censoring_data": "--baseline-data",
 }
-#: Design fields that are not one flag's value: built by `_build_baseline`.
-COMPOSITE_FIELDS = ("baseline",)
+#: Design fields that are not one flag's value: built by `_build_baseline` and
+#: `_build_censoring_data`.
+COMPOSITE_FIELDS = ("baseline", "censoring_data")
 
 
 def _baseline_from_data(args: argparse.Namespace) -> EmpiricalBaseline:
@@ -308,7 +322,24 @@ def _baseline_from_data(args: argparse.Namespace) -> EmpiricalBaseline:
     except ValueError as exc:
         fail(f"--baseline-data: {exc}")
     args.baseline_info = dict(info, biomarker=columns[2] if len(columns) == 3 else None)
+    args.baseline_frame = data[columns[:2]]
     return baseline
+
+
+def _build_censoring_data(args: argparse.Namespace) -> EmpiricalCensoring | None:
+    """The censoring distribution of --baseline-data, for --censoring-model empirical."""
+    if getattr(args, "censoring_model", "exponential") != "empirical":
+        return None
+    if getattr(args, "baseline_data", None) is None:
+        args.subparser.error("--censoring-model empirical requires --baseline-data: it uses "
+                             "the censoring of that cohort")
+    time_col, event_col = args.baseline_frame.columns
+    try:
+        return EmpiricalCensoring.from_data(args.baseline_frame[time_col],
+                                            args.baseline_frame[event_col],
+                                            note=os.path.basename(args.baseline_data))
+    except ValueError as exc:
+        args.subparser.error(f"--baseline-data: {exc}")
 
 
 def _build_baseline(args: argparse.Namespace):
@@ -348,6 +379,7 @@ def _build_design(args: argparse.Namespace) -> StudyDesign:
         kwargs["baseline"] = _build_baseline(args)
         if isinstance(kwargs["baseline"], EmpiricalBaseline):
             kwargs["median_os"] = kwargs["baseline"].median
+        kwargs["censoring_data"] = _build_censoring_data(args)
     try:
         return StudyDesign(**kwargs)
     except ValueError as exc:
@@ -398,12 +430,20 @@ def _validate(args: argparse.Namespace) -> StudyDesign:
         fail("fewer than 10 evaluable patients after --non-evaluable")
     cure = design.baseline_hazard.cure_fraction
     rate = DEFAULT_CENSOR_RATE if design.censor_rate is None else design.censor_rate
-    if cure > 0 and design.accrual_months is None and rate <= cure + 1e-3:
+    if (cure > 0 and design.accrual_months is None and design.censoring_calibrated
+            and rate <= cure + 1e-3):
         fail(f"--censor-rate must be above the cure fraction {cure:.3g} of this --baseline: "
              f"the cured are always censored")
     if getattr(args, "sensitivity", None) and design.non_default_models():
-        fail("--sensitivity supports only the exponential baseline (no --baseline or "
-             "--baseline-data)")
+        fail("--sensitivity supports only the exponential baseline and exponential censoring "
+             "(no --baseline, --baseline-data, --censoring-model or --censoring-shape)")
+    if "censoring" in design.non_default_models():
+        if design.n_covariates > 0:
+            fail("--censoring-model and --censoring-shape support unadjusted analyses only "
+                 "(no --n-covariates)")
+        if args.command in ("benchmark", "precision"):
+            fail(f"{args.command} supports only exponential censoring (no --censoring-model "
+                 f"or --censoring-shape)")
     return design
 
 
@@ -421,7 +461,7 @@ def _print_assumptions(design: StudyDesign, command: str,
             print(f"                       biomarker {info['biomarker']}: fitted HR per SD "
                   f"{np.exp(info['beta_hat']):.3g} (SE of log-HR {info['se']:.3g}; "
                   f"SD = {info['biomarker_sd']:.3g})")
-    elif design.non_default_models():
+    elif "baseline" in design.non_default_models():
         print(f"  baseline median OS : {design.median_os:g} months "
               f"({design.baseline.label()} baseline hazard)")
     else:
@@ -433,8 +473,20 @@ def _print_assumptions(design: StudyDesign, command: str,
         print(f"  test               : one-sided test at alpha = {design.alpha:g}")
     elif command != "precision":
         print(f"  test               : {design.test_label()}")
-    if design.accrual_months is None:
-        print(f"  censoring          : {design.censor_rate_for(1.0):.0%} (fixed)")
+    if design.censoring_model == "empirical":
+        print(f"  censoring          : {design.censoring_label()}\n"
+              f"                       the censored fraction depends on the HR; each result "
+              f"states the one it used")
+    elif design.accrual_months is None:
+        shape = ("" if design.censoring_shape is None else
+                 f", Weibull shape {design.censoring_shape:g}")
+        print(f"  censoring          : {design.censor_rate_for(1.0):.0%} (fixed{shape})")
+    elif design.censoring_model == "calendar":
+        print(f"  censoring          : calendar simulated directly -- {design.accrual_months:g} mo "
+              f"accrual + {design.followup_months:g} mo follow-up, "
+              f"{design.dropout_annual:.0%}/yr dropout\n"
+              f"                       the censored fraction depends on the HR; each result "
+              f"states the one it used")
     else:
         print(f"  censoring          : from design -- {design.accrual_months:g} mo accrual + "
               f"{design.followup_months:g} mo follow-up, {design.dropout_annual:.0%}/yr dropout\n"

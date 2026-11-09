@@ -61,7 +61,7 @@ from .baseline import DEFAULT_LAMBDA0, is_exponential
 from .censoring import calibrate_censoring_rate
 from .dgp import ph_event_times
 from .fitting import cox_fit_1d, wald_rejects
-from .results import mean_mcse, proportion_mcse, sd_mcse
+from .results import censoring_columns, mean_mcse, proportion_mcse, sd_mcse
 
 if TYPE_CHECKING:  # design.py imports this module
     from .design import StudyDesign
@@ -422,6 +422,7 @@ def simulate_cindex_power(
     cs, ses, bh = map(np.asarray, (cs, ses, bh))
     out = dict(
         n=n, n_sims=n_sims, method=method, mean_events=round(float(np.mean(ev)), 1),
+        **censoring_columns(ev, n),
         power_cox=rej_cox / n_sims, power_c05=rej_c05 / n_sims,
         mean_c=float(np.nanmean(cs)) if len(cs) else float("nan"),
         sd_c=float(np.nanstd(cs, ddof=1)) if len(cs) > 1 else float("nan"),

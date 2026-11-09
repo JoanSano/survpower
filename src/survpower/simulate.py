@@ -3,10 +3,11 @@
 Every engine: draws a cohort from a known data-generating process, applies
 exponential censoring calibrated to a target marginal rate, fits a Cox model
 and records the Wald test on the biomarker X. Seeds make every result exactly
-reproducible.
+reproducible. Other censoring models (#16) go through `survpower.scenario`.
 
-Every dict output carries `n_sims` and a `*_mcse` column per Monte Carlo
-estimate (see `survpower.results`). `mean_HR_hat` = exp(mean(beta_hat)) is
+Every dict output carries `n_sims`, a `*_mcse` column per Monte Carlo
+estimate (see `survpower.results`) and the realized censored fraction
+`censor_rate_realized`. `mean_HR_hat` = exp(mean(beta_hat)) is
 inflated by ~exp(Var(beta_hat)/2) even when beta_hat is unbiased; bias is
 reported on the log-HR scale (`bias_beta`).
 """
@@ -28,7 +29,8 @@ from .censoring import (
 )
 from .dgp import gen_adjustment_covariates, gen_crossing, gen_waning, ph_event_times
 from .fitting import ENGINES, cox_fit_1d, fit_cox, logrank_1d, rejects, wald_rejects
-from .results import exp_mean_mcse, mean_mcse, proportion_mcse, sd_mcse, summarize_replicates
+from .results import (censoring_columns, exp_mean_mcse, mean_mcse, proportion_mcse, sd_mcse,
+                      summarize_replicates)
 from .scenario import (
     CoxWald,
     ExponentialCensoring,
@@ -58,6 +60,11 @@ def _beta_columns(reject, beta_hats, ses, beta, alpha) -> dict:
         mean_HR_hat_mcse=_r4(exp_mean_mcse(beta_hats)),
         n_failed=s["n_failed"],
     )
+
+
+def _censoring(events, n: int) -> dict:
+    """`results.censoring_columns`, rounded for tables."""
+    return {k: _r4(v) for k, v in censoring_columns(events, n).items()}
 
 
 def _censor(T: np.ndarray, lam_c: float, rng: np.random.Generator):
@@ -158,7 +165,7 @@ def simulate_power_with_adjustment(
     return dict(
         p=p, r2_target=r2_target,
         power=round(rejections / n_sims, 3),
-        mean_events=round(float(np.mean(events)), 1),
+        mean_events=round(float(np.mean(events)), 1), **_censoring(events, n),
         mean_HR_hat=round(float(np.exp(np.mean(beta_hats))), 3),
         n_sims=n_sims,
         **_beta_columns(reject, beta_hats, ses, beta, alpha),
@@ -241,7 +248,7 @@ def continuous_vs_dichotomized(scenario: Scenario, n: int, n_sims: int, alpha: f
     rej_lr = int(reps.values[lr.name]["reject"].sum())
     bc, bg, se_gs, ev_high = vc["beta_hat"], vd["beta_hat"], vd["se"], vd["events_high"]
     return dict(
-        n_sims=n_sims, mean_events=round(float(np.mean(events)), 1),
+        n_sims=n_sims, mean_events=round(float(np.mean(events)), 1), **_censoring(events, n),
         power_cont=round(rej_cont / n_sims, 3), power_dich=round(rej_dich / n_sims, 3),
         group_hr_fitted=round(float(np.exp(np.nanmean(bg))), 3), lam_c=lam_c,
         power_cont_mcse=_r4(proportion_mcse(rej_cont / n_sims, n_sims)),
@@ -315,7 +322,7 @@ def simulate_epv_diagnostic(
     out = dict(
         p=p, r2_target=r2_target, n=n, n_sims=n_sims,
         epv=round(float(np.mean(events)) / (p + 1), 2),
-        mean_events=round(float(np.mean(events)), 1),
+        mean_events=round(float(np.mean(events)), 1), **_censoring(events, n),
         power=round(power, 3),
         power_mcse=_r4(proportion_mcse(power, n_sims)),
         bias_beta=round(float(np.mean(coefs) - beta), 4),
@@ -382,6 +389,7 @@ def simulate_adjusted_vs_unadjusted(
         b_un.append(b)
     return dict(
         p=p, sigma_z=sigma_z, n=n, n_sims=n_sims, mean_events=round(float(np.mean(events)), 1),
+        **_censoring(events, n),
         power_adjusted=round(rej_adj / n_sims, 3), power_unadjusted=round(rej_un / n_sims, 3),
         mean_HR_adjusted=round(float(np.exp(np.mean(b_adj))), 3),
         mean_HR_unadjusted=round(float(np.exp(np.mean(b_un))), 3),
@@ -440,7 +448,7 @@ def simulate_power_with_heterogeneous_adjustment(
     return dict(
         p=p, r2_target=r2_target, sigma_z=sigma_z, n=n, n_sims=n_sims,
         power=round(rejections / n_sims, 3),
-        mean_events=round(float(np.mean(events)), 1),
+        mean_events=round(float(np.mean(events)), 1), **_censoring(events, n),
         mean_HR_hat=round(float(np.exp(np.mean(beta_hats))), 3),
         median_abs_HRz_realized=(
             round(float(np.exp(np.median(realized_abs_betaz))), 3) if realized_abs_betaz else 1.0
@@ -482,7 +490,7 @@ def simulate_waning_effect(
         power_naive=round(rejections_naive / n_sims, 3),
         power_zph_detect=round(rejections_zph / n_sims, 3),
         mean_HR_hat=round(float(np.exp(np.mean(beta_hats))), 3),
-        mean_events=round(float(np.mean(events)), 1),
+        mean_events=round(float(np.mean(events)), 1), **_censoring(events, n),
         n_sims=n_sims,
         power_naive_mcse=_r4(proportion_mcse(rejections_naive / n_sims, n_sims)),
         power_zph_detect_mcse=_r4(proportion_mcse(rejections_zph / n_sims, n_sims)),
@@ -524,7 +532,7 @@ def simulate_crossing_hazards(
         power_naive=round(rejections_naive / n_sims, 3),
         power_zph_detect=round(rejections_zph / n_sims, 3),
         mean_HR_hat=round(float(np.exp(np.mean(beta_hats))), 3),
-        mean_events=round(float(np.mean(events)), 1),
+        mean_events=round(float(np.mean(events)), 1), **_censoring(events, n),
         n_sims=n_sims,
         power_naive_mcse=_r4(proportion_mcse(rejections_naive / n_sims, n_sims)),
         power_zph_detect_mcse=_r4(proportion_mcse(rejections_zph / n_sims, n_sims)),

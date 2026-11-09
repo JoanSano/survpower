@@ -136,3 +136,72 @@ def test_exported_as_provisional():
     assert survpower.Scenario is Scenario
     assert survpower.simulate_scenario is simulate
     assert hasattr(survpower.simulate, "simulate_power")  # the module is not shadowed
+
+
+# --- simulate_cohort (#78) -----------------------------------------------------
+
+from survpower.fitting import cox_fit_1d  # noqa: E402
+from survpower.scenario import CorrelatedCovariates, simulate_cohort  # noqa: E402
+
+
+def test_cohort_same_seed_identical_different_seed_differs():
+    a = simulate_cohort(_ph(), n=200, seed=5)
+    b = simulate_cohort(_ph(), n=200, seed=5)
+    c = simulate_cohort(_ph(), n=200, seed=6)
+    pd.testing.assert_frame_equal(a, b)
+    assert not a.equals(c)
+
+
+def test_cohort_time_and_event_follow_latent_times_exactly():
+    df = simulate_cohort(_ph(), n=500, seed=2)
+    assert list(df.columns) == ["time", "event", "X", "T", "C"]
+    np.testing.assert_array_equal(df["time"], np.minimum(df["T"], df["C"]))
+    np.testing.assert_array_equal(df["event"], (df["T"] <= df["C"]).astype(int))
+    assert set(df["event"].unique()) <= {0, 1}
+
+
+def test_cohort_is_the_first_replicate_of_simulate():
+    sc = _ph()
+    df = simulate_cohort(sc, n=150, seed=9)
+    reps = run_replicates(sc, n=150, n_sims=1, seed=9)
+    assert reps.events[0] == df["event"].sum()
+    b, _ = cox_fit_1d(df["time"].to_numpy(), df["event"].to_numpy(), df["X"].to_numpy())
+    assert reps.values["cox_wald"]["beta_hat"][0] == pytest.approx(b, rel=1e-12)
+
+
+def test_cohort_matches_design_censoring_and_log_hr_at_large_n():
+    hr, censor_rate, n = 1.3, 0.2, 100_000
+    df = simulate_cohort(_ph(hr=hr, censor_rate=censor_rate), n=n, seed=11)
+    censored = 1 - df["event"].mean()
+    assert abs(censored - censor_rate) < 4 * np.sqrt(censor_rate * (1 - censor_rate) / n)
+    b, se = cox_fit_1d(df["time"].to_numpy(), df["event"].to_numpy(), df["X"].to_numpy())
+    assert abs(b - np.log(hr)) < 4 * se
+
+
+@pytest.mark.parametrize("p", [0, 1, 3])
+def test_cohort_has_one_z_column_per_covariate(p):
+    sc = Scenario(covariates=CorrelatedCovariates(p=p, r2=0.3 if p else 0.0),
+                  event_times=ExponentialPH(log_hr=np.log(1.2)),
+                  censoring=ExponentialCensoring(target_rate=0.3))
+    df = simulate_cohort(sc, n=300, seed=1)
+    assert [c for c in df.columns if c.startswith("Z")] == [f"Z{j}" for j in range(p)]
+
+
+def test_correlated_covariates_hit_target_r2():
+    cov = CorrelatedCovariates(p=3, r2=0.4).draw(200_000, np.random.default_rng(0))
+    coef, *_ = np.linalg.lstsq(np.c_[np.ones(cov.n), cov.Z], cov.X, rcond=None)
+    resid = cov.X - np.c_[np.ones(cov.n), cov.Z] @ coef
+    assert 1 - resid.var() / cov.X.var() == pytest.approx(0.4, abs=0.01)
+
+
+def test_correlated_covariates_validate():
+    with pytest.raises(ValueError):
+        CorrelatedCovariates(p=-1)
+    with pytest.raises(ValueError):
+        CorrelatedCovariates(p=2, r2=1.0)
+    with pytest.raises(ValueError):
+        CorrelatedCovariates(p=0, r2=0.2)
+
+
+def test_simulate_cohort_exported():
+    assert survpower.simulate_cohort is simulate_cohort

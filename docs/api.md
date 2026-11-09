@@ -54,7 +54,7 @@ re-exported from the top-level package (`from survpower import ...`).
 ## Scenarios (provisional)
 
 !!! warning "Provisional API"
-    `survpower.scenario` may change before 1.0. `Scenario` and
+    `survpower.scenario` may change before 1.0. `Scenario`, `simulate_cohort` and
     `simulate_scenario` (= `scenario.simulate`) are exported from `survpower`.
 
 A `Scenario` composes one model per step of the Monte Carlo loop: covariates →
@@ -76,11 +76,24 @@ simulate(sc, n=500, n_sims=1000, seed=1)  # one row per analysis, with MCSEs
 
 The same seed gives the same result within one installed version.
 
+To see what a design produces, `simulate_cohort` draws one cohort from it, with
+the same models and censoring calibration as `simulate`:
+
+```python
+from survpower.scenario import simulate_cohort
+
+cohort = simulate_cohort(sc, n=250, seed=1)
+# columns: time, event, X, (Z0..Zp-1), and the latent T and C
+cohort["event"].mean()   # close to 1 - censor_rate
+```
+
+`T` and `C` are latent: a real study observes only `time` and `event`.
+
 ::: survpower.scenario
     options:
-      members: [Scenario, simulate, run_replicates, Replicates, Effect, scenario_for, Covariates,
+      members: [Scenario, simulate, simulate_cohort, run_replicates, Replicates, Effect, scenario_for, Covariates,
                 CovariateModel, EventTimeModel, CensoringModel, Analysis,
-                StandardNormal, ExponentialPH, ExponentialCensoring, CoxWald, LogRank]
+                StandardNormal, CorrelatedCovariates, ExponentialPH, ExponentialCensoring, CoxWald, LogRank]
 
 ## Simulation engines
 

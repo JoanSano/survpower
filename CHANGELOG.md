@@ -39,6 +39,13 @@
   `censoring_data`. The CLI has `--censoring-model {exponential,calendar,empirical}` (empirical
   uses `--baseline-data`) and `--censoring-shape K`. They apply to unadjusted analyses on
   `power`, `sample-size` and `detectable-effect`; the other paths raise.
+- **How much the timing of censoring matters** (#16): at the docs example, simulating the
+  calendar instead of exponential censoring at the same fraction leaves Cox power
+  unchanged within Monte Carlo error. It raises the power of tests on Harrell's and Uno's
+  C by 4–6 points, because the C estimates are more precise. The "second order" note in
+  `docs/concepts/censoring-and-accrual.md` now gives the measured sizes, and
+  `scripts/censoring_timing_comparison.py` reproduces them. `simulate_cindex_power` takes a
+  `censoring=` model.
 - Every simulation output reports the realized censored fraction, `censor_rate_realized`,
   with its MCSE (`results.censoring_columns`).
 

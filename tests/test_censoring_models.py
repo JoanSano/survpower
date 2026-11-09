@@ -322,3 +322,16 @@ def test_engines_report_realized_censoring():
     assert {"censor_rate_realized", "censor_rate_realized_mcse"} <= set(wan)
     df = simulate(Scenario(analyses=(CoxWald(),)), n=200, n_sims=20, seed=0)
     assert {"censor_rate_realized", "censor_rate_realized_mcse"} <= set(df.columns)
+
+
+def test_cindex_simulation_takes_a_censoring_model():
+    from survpower.concordance import simulate_cindex_power
+    design = StudyDesign(accrual_months=36, followup_months=12, dropout_annual=0.05)
+    beta = np.log(1.3)
+    out = simulate_cindex_power(300, beta, design.lambda_c_for(1.3), n_sims=60, tau=24.0,
+                                method="uno", censoring=CalendarCensoring(36, 12, 0.05),
+                                lambda0=design.lambda0, seed=2)
+    assert abs(out["censor_rate_realized"] - design.censor_rate_for(1.3)) < \
+        4 * out["censor_rate_realized_mcse"]
+    default = simulate_cindex_power(300, beta, 0.02, n_sims=20, seed=2)
+    assert default == simulate_cindex_power(300, beta, 0.02, n_sims=20, seed=2, censoring=None)

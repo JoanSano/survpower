@@ -197,11 +197,12 @@ def censor_rate_from_design(
     administrative censoring time is C_adm ~ U(followup, accrual + followup).
     Optional exponential dropout has annual loss fraction `dropout_annual`.
 
-    The simulation engines then use exponential censoring calibrated to this
-    rate. Cox power is driven almost entirely by the number of events, so
-    matching the event probability is what matters; the exact shape of the
-    censoring distribution is second order. In closed form this
-    rate is 1 - `event_probability_exponential`.
+    By default the simulation engines then use exponential censoring calibrated
+    to this rate (`StudyDesign(censoring_model="calendar")` simulates the
+    calendar itself). At the docs example this leaves Cox power unchanged within
+    Monte Carlo error, but understates the power of tests on Harrell's and Uno's
+    C by 4-6 points (#16; docs/concepts/censoring-and-accrual.md). In closed
+    form this rate is 1 - `event_probability_exponential`.
 
     Event times are exponential with rate `lambda0`, or follow the given
     `baseline` hazard (`survpower.baseline`) under PH. A defective baseline's

@@ -73,22 +73,40 @@ censor:
 
 `censor_rate_from_design` computes the fraction this censors by Monte Carlo, under
 the design's baseline hazard, and `event_probability_exponential` computes it in
-closed form (below) for the constant one. Only
-that fraction is passed to the simulations, which then use exponential
-censoring as described above.
+closed form (below) for the constant one. By default (`--censoring-model exponential`)
+only that fraction is passed to the simulations, which then use exponential
+censoring as described above. With `--censoring-model calendar` the simulations draw
+each patient's censoring time from the calendar itself (`CalendarCensoring`), and the
+censored fraction is an output, reported as `censor_rate_realized`.
 
-!!! note "Same fraction, different timing"
-    The simulated trials match the calendar's **number** of censored patients,
+!!! note "Same fraction, different timing: what it changes"
+    Exponential censoring matches the calendar's **number** of censored patients,
     not **when** they are censored. Under the calendar nobody is censored
-    administratively before \(F\) months. Exponential censoring is most likely
-    right after entry. Cox power depends mostly on the number of events, so
-    matching the fraction is expected to be enough for the Wald test. But the
-    timing changes which patients have events, and it affects Harrell's C
-    (whose limit depends on the censoring distribution) and Uno's C with a
-    fixed horizon more. Gönen–Heller's C uses no times, only the fitted
-    coefficient, so it is affected only through the Cox fit. That this is second order has not yet been checked;
-    simulating the calendar censoring itself is planned in
-    [#16](https://github.com/JoanSano/survpower/issues/16).
+    administratively before \(F\) months; exponential censoring is most likely
+    right after entry. At the example below (median OS 15, \(A = 36\), \(F = 12\),
+    5%/yr dropout) we simulated both, 2000 replicates each, at the closed-form N
+    for 80% power (#16; `scripts/censoring_timing_comparison.py`). The table gives
+    calendar minus exponential, ± MCSE:
+
+    | Per-SD HR (N) | Cox Wald power | Harrell's C: power of C = 0.5 | Uno's C (τ = 24): power | Gönen–Heller: power | Mean C (all three) |
+    |---|---|---|---|---|---|
+    | 1.10 (1262) | +1.5 ± 1.3 pts | **+6.0 ± 1.5 pts** | **+3.9 ± 1.5 pts** | +1.5 ± 1.3 pts | within ±0.001 |
+    | 1.15 (588) | +0.3 ± 1.3 pts | **+4.6 ± 1.5 pts** | **+4.9 ± 1.5 pts** | +1.3 ± 1.3 pts | within ±0.001 |
+    | 1.5 (71) | +1.5 ± 1.3 pts | **+4.0 ± 1.5 pts** | **+5.0 ± 1.5 pts** | +1.5 ± 1.3 pts | within ±0.002 |
+
+    * **Cox power and Gönen–Heller's C:** no difference is detectable (every
+      difference is within 1.2 MCSE). For the Wald test, matching the fraction is
+      enough.
+    * **Harrell's and Uno's C:** the mean C is the same, but the C estimates are
+      more precise under the calendar. Their SD is 4–8% smaller, and the estimated
+      SE tracks it. The power of a test on C is therefore **4–6 points higher**
+      (2.6–4.1 MCSE). Planning a concordance question with exponential censoring
+      is conservative: it asks for roughly 10–15% more patients than the calendar
+      needs.
+
+    Concordance questions (`benchmark`, `precision`) support only exponential
+    censoring for now. For the Cox questions, `--censoring-model calendar`
+    simulates the calendar directly.
 
 Example: median OS 15 months, 36 months accrual, 12 months follow-up and 5%
 dropout per year give 31.5% censoring at HR = 1. This is Lachin and Foulkes's

@@ -64,7 +64,7 @@ from .simulate import simulate_power, simulate_power_design
 from . import scenario
 # provisional (may change before 1.0); `simulate_scenario` because `survpower.simulate`
 # is the module of the legacy engines
-from .scenario import Effect, Scenario, scenario_for
+from .scenario import Effect, Scenario, scenario_for, simulate_cohort
 from .scenario import simulate as simulate_scenario
 
 __version__ = "0.4.0"

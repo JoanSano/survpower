@@ -32,6 +32,7 @@ import pandas as pd
 from ._utils import tqdm
 from .baseline import DEFAULT_LAMBDA0, median_os_to_lambda0
 from .censoring import calibrate_censoring_for
+from .dgp import gen_adjustment_covariates
 from .fitting import ENGINES, cox_fit_1d, fit_cox, logrank_1d, rejects, wald_rejects
 from .results import summarize_replicates
 
@@ -110,6 +111,28 @@ class StandardNormal:
 
     def draw(self, n: int, rng: np.random.Generator) -> Covariates:
         return Covariates(rng.standard_normal(n))
+
+
+@dataclass(frozen=True)
+class CorrelatedCovariates:
+    """X ~ N(0, 1) plus `p` adjustment covariates Z whose multiple R^2 on X is
+    `r2` (`dgp.gen_adjustment_covariates`). The Z carry no effect of their own:
+    they enter the hazard only through an event-time model that uses them."""
+
+    p: int = 1
+    r2: float = 0.0
+
+    def __post_init__(self):
+        if not (isinstance(self.p, (int, np.integer)) and self.p >= 0):
+            raise ValueError("p must be a non-negative integer")
+        if not 0 <= self.r2 < 1:
+            raise ValueError("r2 must be in [0, 1)")
+        if self.r2 > 0 and self.p == 0:
+            raise ValueError("r2 requires p >= 1")
+
+    def draw(self, n: int, rng: np.random.Generator) -> Covariates:
+        X, Z = gen_adjustment_covariates(n, self.r2, self.p, rng)
+        return Covariates(X, Z)
 
 
 # --- Event-time models ----------------------------------------------------------
@@ -272,10 +295,15 @@ class Scenario:
         """A copy with the censoring model calibrated on a probe sample from `seed`."""
         return replace(self, censoring=self.censoring.calibrated(self.sample_latent, seed))
 
+    def draw_latent(self, n: int, rng: np.random.Generator):
+        """One cohort before observation: (T, C, covariates), the latent event
+        and censoring times. Needs a calibrated censoring model."""
+        T, cov = self.sample_latent(n, rng)
+        return T, self.censoring.draw(cov, T, rng), cov
+
     def draw(self, n: int, rng: np.random.Generator):
         """One observed cohort: (time, event, covariates)."""
-        T, cov = self.sample_latent(n, rng)
-        C = self.censoring.draw(cov, T, rng)
+        T, C, cov = self.draw_latent(n, rng)
         return np.minimum(T, C), (T <= C).astype(int), cov
 
 
@@ -371,6 +399,32 @@ def run_replicates(scenario: Scenario, n: int, n_sims: int = 1000, seed: int = 0
     values = {name: {k: np.array([r[k] for r in rs]) for k in (rs[0] if rs else {})}
               for name, rs in rows.items()}
     return Replicates(sc, n, n_sims, alpha, sides, np.array(events), values)
+
+
+def simulate_cohort(scenario: Scenario, n: int, seed: int = 0) -> pd.DataFrame:
+    """One simulated cohort of size `n` from `scenario`'s data-generating process.
+
+    The censoring model is calibrated first, exactly as in `simulate` (probe seed
+    ``seed + 999``), and the cohort is drawn from ``default_rng(seed)``: it is the
+    first replicate that ``simulate(scenario, n, seed=seed)`` analyses.
+
+    Columns: ``time`` = min(T, C), ``event`` = 1{T <= C} (0/1), ``X``,
+    ``Z0..Z{p-1}`` (only when the covariate model draws adjustment covariates),
+    then ``T`` and ``C``.
+
+    ``T`` (latent event time) and ``C`` (latent censoring time) are never both
+    observed in a real study: only ``time`` and ``event`` are. They are returned
+    so that the data-generating model itself can be checked; an analysis of the
+    cohort should use ``time``, ``event`` and the covariates only.
+    """
+    if n < 1:
+        raise ValueError("n must be a positive integer")
+    sc = scenario.calibrated(seed + CALIBRATION_SEED_OFFSET)
+    T, C, cov = sc.draw_latent(n, np.random.default_rng(seed))
+    frame = design_frame(np.minimum(T, C), (T <= C).astype(int), cov.X, cov.Z)
+    frame["T"] = T
+    frame["C"] = C
+    return frame
 
 
 def simulate(scenario: Scenario, n: int, n_sims: int = 1000, seed: int = 0,

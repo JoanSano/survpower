@@ -9,8 +9,8 @@
                                                              half-width at N
 
 Each command only offers the flags its path reads; assumptions (censoring, covariates, ...)
-are shared flag groups, never a command. The old flag-only syntax (`survpower --hr 1.15`) is
-translated to a command with a warning until 0.4.1 (#66).
+are shared flag groups, never a command. The flag-only syntax (`survpower --hr 1.15`) was
+removed in 0.4.1 (#66).
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import shlex
 import sys
 import time
 
@@ -40,10 +39,14 @@ from .sensitivity import SENSITIVITY_CHOICES, run_sensitivity
 
 QUICK_SIMS = {"n_sims": 200, "n_sims_grid": 100, "n_sims_sensitivity": 100}
 DEFAULT_SIMS_SENSITIVITY = 300
-REPORT_REMOVED = (
-    "the report command was removed in 0.4.0; install survpower==0.2.x (tag v0.2.0) to "
-    "reproduce the report, or see the Tutorials:\n"
-    "  pip install \"git+https://github.com/JoanSano/survpower.git@v0.2.0\""
+FLAGS_ONLY_REMOVED = (
+    "the flag-only syntax was removed in 0.4.1; the question is now a command:\n"
+    "  survpower power              --hr/--c-index and --n\n"
+    "  survpower sample-size        --hr/--c-index\n"
+    "  survpower detectable-effect  --n\n"
+    "  survpower benchmark          --c-index and --c0\n"
+    "  survpower precision          --c-index and --half-width or --n\n"
+    "See survpower COMMAND --help."
 )
 UNIVARIATE = ("concordance questions are univariate; to show added value over a clinical "
               "model, power the adjusted HR (survpower power or sample-size, with --hr, "
@@ -242,9 +245,6 @@ def build_parser() -> argparse.ArgumentParser:
     goal.add_argument("--half-width", type=float, nargs="+",
                       help="target 95%% CI half-width(s) for the estimated C")
     goal.add_argument("--n", **_N)
-
-    # a stub so the removal explains itself; #66 deletes it
-    commands.add_parser("report", help="removed in 0.4.0", add_help=False)
     return parser
 
 
@@ -427,76 +427,11 @@ def _run_sensitivity(args: argparse.Namespace, design: StudyDesign, planning_poi
             _save(args, res, f"sensitivity_{name}_{tag}")
 
 
-# --- The flag-only syntax, until 0.4.1 (#66) --------------------------------------------
-
-#: Flags the old syntax rejected on some questions rather than ignored. They are passed on,
-#: so that the new command rejects them as well.
-_LEGACY_ALWAYS_PASSED = {"hr", "c_index", "n_covariates", "r2"}
-_LEGACY_QUESTION_FLAGS = {"hr", "c_index", "c0", "precision", "n", "power"}
-
-
-def _translate_legacy(argv: list) -> list:
-    """The command that `survpower --flags` means, with the flags it ignored removed."""
-    groups = _flag_groups()
-    legacy = argparse.ArgumentParser(prog="survpower", parents=list(groups.values()))
-    effect = legacy.add_mutually_exclusive_group()
-    effect.add_argument("--hr", **_HR)
-    effect.add_argument("--c-index", **_C_ASSOCIATION)
-    legacy.add_argument("--c0", type=float, nargs="+")
-    legacy.add_argument("--precision", type=float, nargs="+")
-    legacy.add_argument("--n", **_N)
-    legacy.add_argument("--power", **_POWER)
-    old = legacy.parse_args(argv)
-
-    if old.c0 and old.precision:
-        legacy.error("give either --c0 (benchmark) or --precision, not both")
-    if old.c0:
-        old.command = "benchmark"
-    elif old.precision:
-        old.command = "precision"
-    elif (old.hr or old.c_index) and old.n:
-        old.command = "power"
-    elif old.hr or old.c_index:
-        old.command = "sample-size"
-    elif old.n:
-        old.command = "detectable-effect"
-    else:
-        legacy.error("give --hr or --c-index, --n, or both")
-
-    commands = next(a for a in build_parser()._actions
-                    if isinstance(a, argparse._SubParsersAction)).choices
-    accepted = {a.dest for a in commands[old.command]._actions}
-    inert = _inert_flags(old)
-    if old.command == "benchmark" and old.n and old.power:
-        inert["--power"] = "--n wins"  # the new command makes the two exclusive
-    new, dropped = [old.command], []
-    # the question's flags first (`sorted` is stable), so the suggested command reads naturally
-    for action in sorted(legacy._actions, key=lambda a: a.dest not in _LEGACY_QUESTION_FLAGS):
-        value = getattr(old, action.dest, None)
-        if action.dest == "help" or value == action.default:
-            continue
-        flag = action.option_strings[0]
-        if action.dest == "precision" and not old.n:
-            flag = "--half-width"  # with --n, --n wins and the half-width was dropped
-        elif (flag in inert or action.dest not in accepted) \
-                and action.dest not in _LEGACY_ALWAYS_PASSED:
-            dropped.append(flag)
-            continue
-        new.append(flag)
-        if value is not True:
-            new.extend(str(v) for v in (value if isinstance(value, list) else [value]))
-
-    print("warning: this syntax is deprecated and will be removed in 0.4.1. Use:\n"
-          f"  survpower {shlex.join(new)}", file=sys.stderr)
-    if dropped:
-        print(f"  dropped, because they had no effect here: {', '.join(dropped)}", file=sys.stderr)
-    return new
-
-
 def main(argv: list | None = None) -> None:
     argv = sys.argv[1:] if argv is None else list(argv)
     if argv and argv[0].startswith("--") and argv[0] not in ("--help", "--version"):
-        argv = _translate_legacy(argv)
+        print(f"survpower: error: {FLAGS_ONLY_REMOVED}", file=sys.stderr)
+        sys.exit(2)
     parser = build_parser()
     args, unknown = parser.parse_known_args(argv)
     if args.command is None:
@@ -504,8 +439,6 @@ def main(argv: list | None = None) -> None:
             parser.error(f"unrecognized arguments: {' '.join(unknown)}")
         parser.print_help()
         sys.exit(2)
-    if args.command == "report":
-        parser.exit(2, f"survpower: error: {REPORT_REMOVED}\n")
     if unknown:
         if args.command in ("benchmark", "precision") and {"--n-covariates", "--r2"} & set(unknown):
             args.subparser.error(UNIVARIATE)

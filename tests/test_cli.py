@@ -216,80 +216,37 @@ def test_pinned_results_at_a_fixed_seed(tmp_path):
 
 # --- The flag-only syntax, removed in 0.4.1 (#66) --------------------------------------
 
-LEGACY = [
-    (["--c-index", "0.7", "--c0", "0.65", "--n", "100"],
-     ["benchmark", "--c-index", "0.7", "--c0", "0.65", "--n", "100"], "cindex_benchmark"),
-    (["--c-index", "0.7", "--c0", "0.65"],
-     ["benchmark", "--c-index", "0.7", "--c0", "0.65"], "cindex_benchmark"),
-    (["--c-index", "0.7", "--precision", "0.05"],
-     ["precision", "--c-index", "0.7", "--half-width", "0.05"], "cindex_precision"),
-    (["--c-index", "0.7", "--precision", "0.05", "--n", "100"],
-     ["precision", "--c-index", "0.7", "--n", "100"], "cindex_precision"),
-    (["--hr", "1.5", "--n", "100"], ["power", "--hr", "1.5", "--n", "100"], "power_analysis"),
-    (["--c-index", "0.6", "--n", "100"], ["power", "--c-index", "0.6", "--n", "100"], "power_analysis"),
-    (["--hr", "1.5"], ["sample-size", "--hr", "1.5"], "sample_size"),
-    (["--c-index", "0.65"], ["sample-size", "--c-index", "0.65"], "sample_size"),
-    (["--n", "100"], ["detectable-effect", "--n", "100"], "detectable_effect"),
-]
-
-
-@pytest.mark.parametrize("old, new, csv", LEGACY)
-def test_legacy_syntax_gives_the_same_csv_and_warns(tmp_path, old, new, csv, capsys):
-    grid = GRID if new[0] in SOLVES and "--n" not in new else []
-    main([*old, *FEW, *grid, "--outdir", str(tmp_path / "old")])
-    err = capsys.readouterr().err
-    assert "deprecated" in err and f"survpower {' '.join(new)}" in err
-    main([*new, *FEW, *grid, "--outdir", str(tmp_path / "new")])
-    assert capsys.readouterr().err == ""
-    assert (tmp_path / "old" / f"{csv}.csv").read_bytes() == (tmp_path / "new" / f"{csv}.csv").read_bytes()
-
-
-@pytest.mark.parametrize("old, dropped, csv", [
-    (["--hr", "1.5", "--n", "100", "--power", "0.9"], "--power", "power_analysis"),
-    (["--c-index", "0.7", "--c0", "0.65", "--n", "100", "--power", "0.9"], "--power", "cindex_benchmark"),
-    (["--c-index", "0.7", "--c0", "0.65", "--n", "100", "--sides", "1"], "--sides", "cindex_benchmark"),
-    (["--c-index", "0.7", "--precision", "0.05", "--sensitivity", "waning"], "--sensitivity", "cindex_precision"),
-    (["--hr", "1.5", "--n", "100", "--c-estimator", "uno"], "--c-estimator", "power_analysis"),
-    (["--hr", "1.5", "--n", "100", "--tau", "4"], "--tau", "power_analysis"),
-    (["--c-index", "0.7", "--precision", "0.05", "--c-tau", "24"], "--c-tau", "cindex_precision"),
-])
-def test_legacy_drops_what_was_ignored_and_says_so(tmp_path, old, dropped, csv, capsys):
-    main([*old, *FEW, "--outdir", str(tmp_path)])
-    err = capsys.readouterr().err
-    assert "dropped" in err and dropped in err.split("dropped")[1]
-    assert (tmp_path / f"{csv}.csv").exists()
-
-
 @pytest.mark.parametrize("old", [
-    ["--hr", "1.2", "--c-index", "0.6"],
-    ["--hr", "1.2", "--c0", "0.6"],
-    ["--hr", "1.2", "--precision", "0.05"],
-    ["--c0", "0.6"],
-    ["--precision", "0.05"],
-    ["--c-index", "0.6", "--c0", "0.65"],
-    ["--c-index", "0.7", "--c0", "0.6", "--precision", "0.05"],
-    ["--c-index", "0.7", "--c0", "0.6", "--n-covariates", "2"],
-    ["--n", "100", "--r2", "0.3"],
+    ["--hr", "1.15"],
+    ["--hr", "1.5", "--n", "100"],
+    ["--n", "100"],
+    ["--c-index", "0.7", "--c0", "0.65"],
     ["--alpha", "0.01"],
 ])
-def test_legacy_still_rejects_what_it_rejected(old):
+def test_flag_only_syntax_exits_and_lists_the_commands(old, tmp_path, capsys):
     with pytest.raises(SystemExit) as exc:
-        main(old)
-    assert exc.value.code == 2
-
-
-def test_legacy_accepts_abbreviations_as_it_did(tmp_path, capsys):
-    main(["--hr", "1.5", "--n", "100", "--no-pl", "--n-sims", "20", "--outdir", str(tmp_path)])
-    assert "survpower power --hr 1.5 --n 100" in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("args", [["report"], ["report", "--appendix-b", "--outdir", "x"]])
-def test_report_command_explains_its_removal(args, capsys):
-    with pytest.raises(SystemExit) as exc:
-        main(args)
+        main([*old, "--outdir", str(tmp_path)])
     assert exc.value.code == 2
     err = capsys.readouterr().err
-    assert "removed in 0.4.0" in err and "v0.2.0" in err and "Tutorials" in err
+    assert "removed in 0.4.1" in err
+    for command in ("power", "sample-size", "detectable-effect", "benchmark", "precision"):
+        assert f"survpower {command} " in err
+    assert not any(tmp_path.iterdir())  # nothing ran
+
+
+@pytest.mark.parametrize("flag, out", [("--help", "usage: survpower"), ("--version", survpower.__version__)])
+def test_help_and_version_still_work(flag, out, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main([flag])
+    assert exc.value.code == 0
+    assert out in capsys.readouterr().out
+
+
+def test_report_is_no_longer_a_command(capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["report"])
+    assert exc.value.code == 2
+    assert "invalid choice: 'report'" in capsys.readouterr().err
 
 
 def test_report_module_is_gone():

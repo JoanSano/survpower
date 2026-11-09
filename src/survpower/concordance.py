@@ -364,6 +364,13 @@ def concordance_index(time, event, eta, method: str = "harrell",
 
 # --- Simulation ---------------------------------------------------------------
 
+class _Cohort:
+    """The cohort size a censoring model's `draw` reads (`scenario.Covariates.n`)."""
+
+    def __init__(self, n: int):
+        self.n = n
+
+
 def simulate_cindex_power(
     n: int,
     beta: float,
@@ -377,10 +384,14 @@ def simulate_cindex_power(
     lambda0: float = DEFAULT_LAMBDA0,
     seed: int = 0,
     baseline=None,
+    censoring=None,
 ) -> dict:
     """One simulation cell: cohorts of size n with per-SD log-HR
     beta and exponential censoring rate lam_c, with an exponential baseline
-    of rate `lambda0` or the given `baseline`. Records
+    of rate `lambda0` or the given `baseline`. A `censoring` model
+    (`survpower.scenario`, already calibrated, e.g. `CalendarCensoring`) replaces
+    the exponential censoring; `lam_c` then only sets the default Uno `tau`
+    (pass `tau` to compare censoring models at one horizon). Records
 
     * power_cox  : Cox Wald test of beta = 0 (`sides`, level alpha)
     * power_c05  : test of C = 0.5 from the estimated C and its SE (`sides`)
@@ -403,7 +414,10 @@ def simulate_cindex_power(
     for _ in tqdm(range(n_sims), desc=f"c-index n={n}", leave=False):
         X = rng.standard_normal(n)
         T = ph_event_times(beta * X, rng, lambda0, baseline)
-        C = rng.exponential(scale=1.0 / lam_c, size=n)
+        if censoring is None:
+            C = rng.exponential(scale=1.0 / lam_c, size=n)
+        else:
+            C = censoring.draw(_Cohort(n), T, rng)
         t, d = np.minimum(T, C), T <= C
         ev.append(d.sum())
         if d.sum() < 2:

@@ -54,7 +54,7 @@ On every command.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--median-os` | 15 | baseline median overall survival, months |
+| `--median-os` | 15 | baseline median overall survival, months; not with `--baseline-data`, which estimates it |
 | `--biomarker-sd SD` | | SD of the raw biomarker; `--hr` is then per raw unit |
 | `--non-evaluable` | 0 | fraction of enrolled patients with no usable biomarker value |
 | `--censor-rate` | 0.20 | marginal censoring probability (alternative to the accrual design) |

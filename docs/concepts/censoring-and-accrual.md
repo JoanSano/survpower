@@ -219,7 +219,8 @@ inflated to \(N_{\text{enrolled}} = \lceil N_{\text{eval}} / (1 - f) \rceil\).
 
 `--median-os` is the baseline median. For the default constant hazard it sets
 \(\lambda_0 = \ln 2 / \text{median OS}\); every other baseline family is calibrated to it
-too (below). For PH analyses,
+too (below), and a baseline [estimated from a cohort](#a-baseline-estimated-from-a-cohort)
+brings its own. For PH analyses,
 power and N are **exactly invariant** to it: Cox regression uses only the
 ordering of times, and the censoring calibration rescales with \(\lambda_0\).
 It matters when:

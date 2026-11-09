@@ -68,7 +68,8 @@ Check the install with `survpower --help` and `pytest -q`.
 | precision of C | `survpower precision --c-index 0.70 --half-width 0.05` | N for a ±0.05 CI |
 | precision at N | `survpower precision --c-index 0.70 --n 200` | CI half-width at that N |
 
-Design options: `--median-os`, `--censor-rate` or `--accrual-months/--followup-months/--dropout`,
+Design options: `--median-os`, `--baseline {exponential,weibull,gompertz,loglogistic}` with
+`--baseline-shape`, `--censor-rate` or `--accrual-months/--followup-months/--dropout`,
 `--non-evaluable`, `--n-covariates/--r2`, `--sides`, `--biomarker-sd`,
 `--c-estimator {harrell,uno,gonen-heller}`, `--c-tau`. Each command only offers the flags
 it reads. Sensitivity analyses:

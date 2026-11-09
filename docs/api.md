@@ -77,6 +77,23 @@ simulate(sc, n=500, n_sims=1000, seed=1)  # one row per analysis, with MCSEs
 
 The same seed gives the same result within one installed version.
 
+Censoring models (#16): `ExponentialCensoring` (the default), `WeibullCensoring` and
+`PiecewiseCensoring` are calibrated to a target censored fraction; `CalendarCensoring`
+(the accrual design simulated directly) and `EmpiricalCensoring` (a cohort's reverse
+Kaplan–Meier) are not, and their fraction is an output. Every output reports the realized
+fraction, `censor_rate_realized`, with its MCSE.
+
+```python
+from survpower.scenario import CalendarCensoring, WeibullCensoring
+
+late = Scenario(event_times=ExponentialPH(log_hr=np.log(1.15)),
+                censoring=WeibullCensoring(target_rate=0.20, shape=2.0))
+trial = Scenario(event_times=ExponentialPH(log_hr=np.log(1.15)),
+                 censoring=CalendarCensoring(accrual_months=36, followup_months=12,
+                                             dropout_annual=0.05))
+simulate(trial, n=500, n_sims=1000, seed=1)["censor_rate_realized"]
+```
+
 To see what a design produces, `simulate_cohort` draws one cohort from it, with
 the same models and censoring calibration as `simulate`:
 
@@ -95,6 +112,7 @@ cohort["event"].mean()   # close to 1 - censor_rate
       members: [Scenario, simulate, simulate_cohort, run_replicates, Replicates, Effect, scenario_for, Covariates,
                 CovariateModel, EventTimeModel, CensoringModel, Analysis,
                 StandardNormal, CorrelatedCovariates, ExponentialPH, PHModel, ExponentialCensoring,
+                WeibullCensoring, PiecewiseCensoring, CalendarCensoring, EmpiricalCensoring,
                 CoxWald, LogRank]
 
 ## Simulation engines
@@ -111,7 +129,7 @@ cohort["event"].mean()   # close to 1 - censor_rate
 ::: survpower.results
     options:
       members: [Estimate, proportion_mcse, mean_mcse, sd_mcse, exp_mean_mcse,
-                summarize_replicates]
+                summarize_replicates, censoring_columns]
 
 ## Censoring
 

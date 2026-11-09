@@ -344,3 +344,62 @@ def test_baseline_columns_need_baseline_data(capsys):
     with pytest.raises(SystemExit):
         main(["power", "--hr", "1.3", "--n", "150", "--baseline-columns", "a", "b"])
     assert "only applies to --baseline-data" in capsys.readouterr().err
+
+
+# --- censoring models (#16) -------------------------------------------------------------
+
+CALENDAR = ["--accrual-months", "36", "--followup-months", "12", "--dropout", "0.05"]
+
+
+def test_calendar_censoring(tmp_path, capsys):
+    run(tmp_path, "power", "--hr", "1.3", "--n", "200", *CALENDAR, "--censoring-model", "calendar")
+    assert "calendar simulated directly" in capsys.readouterr().out
+    row = pd.read_csv(tmp_path / "power_analysis.csv").iloc[0]
+    assert row["censor_rate"] == pytest.approx(0.316, abs=0.005)
+    assert 0 < row["power_sim"] <= 1
+
+
+def test_weibull_censoring_shape(tmp_path, capsys):
+    run(tmp_path, "sample-size", "--hr", "1.4", "--censor-rate", "0.3", "--censoring-shape", "2")
+    assert "30% (fixed, Weibull shape 2)" in capsys.readouterr().out
+    assert pd.read_csv(tmp_path / "sample_size.csv")["n_calibrated_evaluable"].iloc[0] > 0
+
+
+def test_empirical_censoring_from_baseline_data(tmp_path, capsys):
+    csv = _cohort_csv(tmp_path)
+    run(tmp_path, "power", "--hr", "1.3", "--n", "150", "--baseline-data", csv,
+        "--baseline-columns", "OS", "status", "--censoring-model", "empirical")
+    assert "reverse Kaplan-Meier from cohort.csv" in capsys.readouterr().out
+    assert pd.read_csv(tmp_path / "power_analysis.csv")["censor_rate"].between(0, 1).all()
+
+
+@pytest.mark.parametrize("args, message", [
+    (["--censoring-model", "calendar"], "--censoring-model 'calendar' requires --accrual-months"),
+    (["--censoring-model", "empirical"], "--censoring-model empirical requires --baseline-data"),
+    (["--censoring-model", "weibull"], "invalid choice"),
+    (["--censoring-shape", "0"], "--censoring-shape must be positive"),
+    (["--censoring-shape", "2", *CALENDAR], "--censoring-shape applies to a fixed --censor-rate"),
+    (["--censoring-shape", "2", "--n-covariates", "2"], "unadjusted analyses only"),
+    (["--censoring-model", "calendar", *CALENDAR, "--sensitivity", "epv"],
+     "exponential censoring"),
+])
+def test_censoring_flag_errors(args, message, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["power", "--hr", "1.3", "--n", "150", *args])
+    assert exc.value.code == 2
+    assert message in capsys.readouterr().err
+
+
+def test_empirical_censoring_flag_errors(tmp_path, capsys):
+    csv = _cohort_csv(tmp_path)
+    with pytest.raises(SystemExit):
+        main(["power", "--hr", "1.3", "--n", "150", "--baseline-data", csv, "--baseline-columns",
+              "OS", "status", "--censoring-model", "empirical", "--censor-rate", "0.2"])
+    assert "--censoring-model 'empirical' sets the censoring" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command", [["benchmark", "--c0", "0.6"], ["precision", "--n", "100"]])
+def test_concordance_commands_refuse_censoring_models(command, capsys):
+    with pytest.raises(SystemExit):
+        main([command[0], "--c-index", "0.7", *command[1:], "--censoring-shape", "2"])
+    assert "supports only exponential censoring" in capsys.readouterr().err

@@ -1,14 +1,24 @@
 """Independent censoring and its calibration.
 
-Censoring is C ~ Exponential(lambda_c), independent of T. lambda_c is chosen
-so that the marginal censoring probability P(C < T) hits a target. Because
+By default censoring is C ~ Exponential(lambda_c), independent of T. lambda_c is
+chosen so that the marginal censoring probability P(C < T) hits a target. Because
 P(C < T) is strictly increasing in lambda_c, bisection on a large Monte Carlo
 probe sample converges to the unique root.
+
+The other calibrated censoring shapes (#16) share one form: a cumulative hazard
+H_C(t) = lambda_c R(t) with a fixed, increasing R (t^k for Weibull, a piecewise-
+linear R for piecewise-constant hazards). Then
+
+    P(C < T) = E[1 - exp(-lambda_c R(T))],
+
+which is strictly increasing in lambda_c, pointwise in T, so the calibration again
+has a unique root (`calibrate_cumhaz_scale`).
 """
 
 from __future__ import annotations
 
 import numpy as np
+from scipy.optimize import brentq
 
 from .baseline import (DEFAULT_LAMBDA0, DEFAULT_MEDIAN_OS_MONTHS, marginal_cure_fraction,
                        median_os_to_lambda0)
@@ -33,17 +43,74 @@ def calibrate_censoring(
     return (lo + hi) / 2
 
 
+def calibrate_cumhaz_scale(T: np.ndarray, rel_cumhaz, target_censor_rate: float) -> float:
+    """Scale lambda_c of a censoring cumulative hazard H_C(t) = lambda_c R(t) giving
+    P(C < T) = target over the probe sample of event times `T`.
+
+    P(C < T | T) = 1 - exp(-lambda_c R(T)) is computed exactly, so no censoring
+    times are drawn, and its mean is strictly increasing in lambda_c (pointwise in
+    T, for R(T) > 0): the root is unique, found by Brent's method on log lambda_c.
+    Event times T = inf (the cured of a defective baseline) are always censored,
+    so the target must be above their fraction."""
+    r = rel_cumhaz(np.asarray(T, dtype=float))
+    def excess(log_lam):
+        return float(np.mean(-np.expm1(-np.exp(log_lam) * r))) - target_censor_rate
+    lo, hi = -60.0, 60.0
+    if not excess(lo) < 0 < excess(hi):
+        raise ValueError(f"no censoring scale gives P(C < T) = {target_censor_rate:.3g}: "
+                         f"it must be in ({excess(lo) + target_censor_rate:.3g}, "
+                         f"{excess(hi) + target_censor_rate:.3g})")
+    return float(np.exp(brentq(excess, lo, hi, xtol=1e-12, rtol=1e-12)))
+
+
 def calibrate_censoring_for(
     sampler,
     target_censor_rate: float,
     seed: int = 1,
     n_probe: int = 500_000,
+    rel_cumhaz=None,
 ) -> float:
     """lambda_c for any event-time generator: draws a probe sample
-    ``T = sampler(n_probe, rng)`` from ``default_rng(seed)`` and bisects on it
-    with the same generator (`calibrate_censoring`)."""
+    ``T = sampler(n_probe, rng)`` from ``default_rng(seed)``.
+
+    Without `rel_cumhaz`, censoring is exponential and lambda_c is bisected on the
+    probe with the same generator (`calibrate_censoring`), as it always has been.
+    With it, lambda_c is the scale of H_C(t) = lambda_c * rel_cumhaz(t)
+    (`calibrate_cumhaz_scale`)."""
     rng = np.random.default_rng(seed)
-    return calibrate_censoring(np.asarray(sampler(n_probe, rng)), target_censor_rate, rng)
+    T = np.asarray(sampler(n_probe, rng))
+    if rel_cumhaz is None:
+        return calibrate_censoring(T, target_censor_rate, rng)
+    return calibrate_cumhaz_scale(T, rel_cumhaz, target_censor_rate)
+
+
+def piecewise_cumhaz(t, breaks, rates) -> np.ndarray:
+    """Cumulative hazard of a piecewise-constant hazard: `rates[k]` on
+    [breaks[k-1], breaks[k]), with breaks[-1] = 0 and the last rate to infinity."""
+    starts = np.concatenate([[0.0], np.asarray(breaks, dtype=float)])
+    rates = np.asarray(rates, dtype=float)
+    h_starts = np.concatenate([[0.0], np.cumsum(rates[:-1] * np.diff(starts))])
+    t = np.asarray(t, dtype=float)
+    k = np.searchsorted(starts, t, side="right") - 1
+    return h_starts[k] + rates[k] * (t - starts[k])
+
+
+def piecewise_inv_cumhaz(h, breaks, rates) -> np.ndarray:
+    """Inverse of `piecewise_cumhaz` (all rates positive)."""
+    starts = np.concatenate([[0.0], np.asarray(breaks, dtype=float)])
+    rates = np.asarray(rates, dtype=float)
+    h_starts = np.concatenate([[0.0], np.cumsum(rates[:-1] * np.diff(starts))])
+    h = np.asarray(h, dtype=float)
+    k = np.searchsorted(h_starts, h, side="right") - 1
+    return starts[k] + (h - h_starts[k]) / rates[k]
+
+
+def dropout_scale(dropout_annual: float, shape: float = 1.0) -> float:
+    """Scale lambda_d of a Weibull dropout cumulative hazard H_D(t) = lambda_d t^shape
+    (t in months) whose 12-month loss probability is `dropout_annual`:
+    lambda_d = -ln(1 - d) / 12^shape. With shape 1, the exponential dropout rate
+    of `censor_rate_from_design`."""
+    return float(-np.log1p(-dropout_annual) / 12.0 ** shape)
 
 
 def require_censoring_above_cure(baseline, log_hr: float, censor_rate: float) -> None:

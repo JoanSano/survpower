@@ -62,11 +62,13 @@ def summarize_replicates(
     beta_true: float | None = None,
     events: np.ndarray | None = None,
     alpha: float = 0.05,
+    n: int | None = None,
 ) -> dict:
     """Power, bias, empirical SE, mean model SE, relative error of the model
     SE, coverage of the (1 - alpha) Wald interval and mean events, each with
-    its MCSE where one applies. Columns appear only when their inputs are
-    given; values are unrounded."""
+    its MCSE where one applies; with the cohort size `n` too, the realized
+    censored fraction (`censoring_columns`). Columns appear only when their
+    inputs are given; values are unrounded."""
     reject = np.asarray(reject, dtype=bool)
     n_sims = len(reject)
     power = float(np.mean(reject))
@@ -90,4 +92,16 @@ def summarize_replicates(
                 out.update(coverage=cov, coverage_mcse=proportion_mcse(cov, len(b)))
     if events is not None:
         out["mean_events"] = float(np.mean(events))
+        if n is not None:
+            out.update(censoring_columns(events, n))
     return out
+
+
+def censoring_columns(events, n: int) -> dict:
+    """The realized censored fraction, 1 - events / n averaged over replicates, and
+    its MCSE (`censor_rate_realized`, `censor_rate_realized_mcse`): the check on a
+    calibrated censoring model, and the result of an uncalibrated one (a trial
+    calendar), whose fraction depends on the effect and the baseline."""
+    censored = 1.0 - np.asarray(events, dtype=float) / n
+    return dict(censor_rate_realized=float(np.mean(censored)),
+                censor_rate_realized_mcse=mean_mcse(censored))

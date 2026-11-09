@@ -32,7 +32,8 @@ import pandas as pd
 from ._utils import tqdm
 from .baseline import (DEFAULT_LAMBDA0, BaselineHazard, is_exponential, marginal_median,
                        median_os_to_lambda0)
-from .censoring import calibrate_censoring_for, require_censoring_above_cure
+from .censoring import (calibrate_censoring_for, dropout_scale, piecewise_cumhaz,
+                        piecewise_inv_cumhaz, require_censoring_above_cure)
 from .dgp import gen_adjustment_covariates, ph_event_times
 from .fitting import ENGINES, cox_fit_1d, fit_cox, logrank_1d, rejects, wald_rejects
 from .results import summarize_replicates
@@ -215,6 +216,218 @@ class ExponentialCensoring:
         return rng.exponential(scale=1.0 / self.rate, size=cov.n)
 
 
+class _ScaledCumhazCensoring:
+    """Censoring with cumulative hazard H_C(t) = rate * R(t), R fixed by the shape
+    parameters. `calibrated` sets `rate` so that P(C < T) = `target_rate`
+    (`censoring.calibrate_cumhaz_scale`: unique root, since P(C < T) is strictly
+    increasing in the rate); a given `rate` is used as is. C = R^{-1}(E / rate),
+    E ~ Exp(1)."""
+
+    def rel_cumhaz(self, t) -> np.ndarray: ...
+
+    def rel_inv_cumhaz(self, h) -> np.ndarray: ...
+
+    def _check_target(self):
+        if not 0 < self.target_rate < 1:
+            raise ValueError("target_rate must be in (0, 1)")
+        if self.rate is not None and not 0 < self.rate < np.inf:
+            raise ValueError("rate must be positive and finite")
+
+    def calibrated(self, sampler: Sampler, seed: int):
+        if self.rate is not None:
+            return self
+        rate = calibrate_censoring_for(lambda n, rng: sampler(n, rng)[0], self.target_rate,
+                                       seed=seed, n_probe=self.n_probe,
+                                       rel_cumhaz=self.rel_cumhaz)
+        return replace(self, rate=rate)
+
+    def draw(self, cov: Covariates, event_times: np.ndarray,
+             rng: np.random.Generator) -> np.ndarray:
+        if self.rate is None:
+            raise ValueError(f"{type(self).__name__} has no rate; call calibrated() first")
+        return self.rel_inv_cumhaz(rng.standard_exponential(cov.n) / self.rate)
+
+
+@dataclass(frozen=True)
+class WeibullCensoring(_ScaledCumhazCensoring):
+    """Weibull censoring, H_C(t) = rate * t^shape (t in months), independent of T,
+    calibrated to `target_rate`. shape > 1 puts censoring late (a rising censoring
+    hazard), shape < 1 early; shape 1 is exponential censoring (but calibrated
+    without Monte Carlo noise, so not bit-identical to `ExponentialCensoring`)."""
+
+    target_rate: float = 0.20
+    shape: float = 1.0
+    rate: float | None = None
+    n_probe: int = 500_000
+
+    def __post_init__(self):
+        self._check_target()
+        if not 0 < self.shape < np.inf:
+            raise ValueError("shape must be positive and finite")
+
+    def rel_cumhaz(self, t):
+        return np.asarray(t, dtype=float) ** self.shape
+
+    def rel_inv_cumhaz(self, h):
+        return np.asarray(h, dtype=float) ** (1.0 / self.shape)
+
+
+@dataclass(frozen=True)
+class PiecewiseCensoring(_ScaledCumhazCensoring):
+    """Piecewise-constant censoring hazard, independent of T: proportional to
+    `relative_rates` (one more than `breaks`, in months), scaled by `rate` and
+    calibrated to `target_rate`. E.g. ``breaks=(24,), relative_rates=(1, 4)``
+    censors four times as fast after two years."""
+
+    target_rate: float = 0.20
+    breaks: tuple = ()
+    relative_rates: tuple = (1.0,)
+    rate: float | None = None
+    n_probe: int = 500_000
+
+    def __post_init__(self):
+        self._check_target()
+        breaks = tuple(float(b) for b in self.breaks)
+        rates = tuple(float(r) for r in self.relative_rates)
+        object.__setattr__(self, "breaks", breaks)
+        object.__setattr__(self, "relative_rates", rates)
+        if len(rates) != len(breaks) + 1:
+            raise ValueError("relative_rates needs one more value than breaks")
+        if any(not 0 < b < np.inf for b in breaks) or any(np.diff(breaks) <= 0):
+            raise ValueError("breaks must be positive, finite and increasing")
+        if any(not 0 < r < np.inf for r in rates):
+            raise ValueError("relative_rates must be positive and finite")
+
+    def rel_cumhaz(self, t):
+        return piecewise_cumhaz(t, self.breaks, self.relative_rates)
+
+    def rel_inv_cumhaz(self, h):
+        return piecewise_inv_cumhaz(h, self.breaks, self.relative_rates)
+
+
+@dataclass(frozen=True)
+class CalendarCensoring:
+    """The trial calendar, simulated directly: entry ~ U(0, A), analysis at A + F,
+    so administrative censoring is C_adm = A + F - entry ~ U(F, A + F); with
+    dropout, C = min(C_adm, D), D Weibull with H_D(t) = lambda_d t^dropout_shape
+    and a 12-month loss probability of `dropout_annual` (`censoring.dropout_scale`).
+    Months throughout.
+
+    Not calibrated: the censored fraction depends on the effect and the baseline,
+    and is an output (``censor_rate_realized``). With exponential dropout
+    (shape 1) its expectation is `censoring.censor_rate_from_design`."""
+
+    accrual_months: float
+    followup_months: float
+    dropout_annual: float = 0.0
+    dropout_shape: float = 1.0
+
+    def __post_init__(self):
+        A, F = self.accrual_months, self.followup_months
+        if not (0 <= A < np.inf and 0 <= F < np.inf and A + F > 0):
+            raise ValueError("need accrual_months >= 0, followup_months >= 0 (finite) "
+                             "and accrual_months + followup_months > 0")
+        if not 0 <= self.dropout_annual < 1:
+            raise ValueError("dropout_annual must be in [0, 1)")
+        if not 0 < self.dropout_shape < np.inf:
+            raise ValueError("dropout_shape must be positive and finite")
+
+    def calibrated(self, sampler: Sampler, seed: int) -> "CalendarCensoring":
+        return self
+
+    def draw(self, cov: Covariates, event_times: np.ndarray,
+             rng: np.random.Generator) -> np.ndarray:
+        A, F = self.accrual_months, self.followup_months
+        C = rng.uniform(F, A + F, size=cov.n)
+        if self.dropout_annual > 0:
+            lam_d = dropout_scale(self.dropout_annual, self.dropout_shape)
+            if self.dropout_shape == 1.0:
+                D = rng.exponential(scale=1.0 / lam_d, size=cov.n)
+            else:
+                D = (rng.standard_exponential(cov.n) / lam_d) ** (1.0 / self.dropout_shape)
+            C = np.minimum(C, D)
+        return C
+
+
+@dataclass(frozen=True)
+class EmpiricalCensoring:
+    """The censoring distribution of a cohort, estimated by reverse Kaplan-Meier
+    (censoring as the event): build it with `from_data`.
+
+    C takes the cohort's distinct censoring times (`times`) with cumulative
+    probabilities `cdf`. The probability that the reverse Kaplan-Meier leaves past
+    the last censoring time is put at the largest follow-up in the data (`times[-1]`):
+    nobody in the cohort was followed longer, so the simulated study ends there too.
+
+    Not calibrated: the censored fraction is an output (``censor_rate_realized``),
+    as for `CalendarCensoring`. `note` describes the source in summaries."""
+
+    times: tuple = ()
+    cdf: tuple = ()
+    note: str = ""
+
+    def __post_init__(self):
+        times = tuple(float(t) for t in self.times)
+        cdf = tuple(float(p) for p in self.cdf)
+        object.__setattr__(self, "times", times)
+        object.__setattr__(self, "cdf", cdf)
+        if len(times) < 1 or len(times) != len(cdf):
+            raise ValueError("times and cdf need the same length, at least 1")
+        if times[0] <= 0 or any(np.diff(times) <= 0) or not np.isfinite(times[-1]):
+            raise ValueError("times must be positive, finite and increasing")
+        if cdf[0] <= 0 or any(np.diff(cdf) <= 0) or cdf[-1] != 1.0:
+            raise ValueError("cdf must be positive, increasing and end at 1")
+
+    @classmethod
+    def from_data(cls, time, event, note: str = "") -> "EmpiricalCensoring":
+        """Reverse Kaplan-Meier of a cohort's follow-up (months) and event indicator
+        (1 = death, 0 = censored). At tied times deaths precede censoring, as usual,
+        so a death at t is not at risk of censoring at t. Rows with a missing value
+        are dropped."""
+        t = np.asarray(time, dtype=float)
+        d = np.asarray(event, dtype=float)
+        keep = np.isfinite(t) & np.isfinite(d)
+        t, d = t[keep], d[keep]
+        if np.any(t <= 0):
+            raise ValueError(f"follow-up times must be positive ({int(np.sum(t <= 0))} row(s) "
+                             f"are not)")
+        if not np.all(np.isin(d, (0, 1))):
+            raise ValueError("the event indicator must be 0 or 1")
+        cens = d == 0
+        if not cens.any():
+            raise ValueError("no censored follow-up: the censoring distribution cannot be "
+                             "estimated")
+        c_times, n_cens = np.unique(t[cens], return_counts=True)
+        t_sorted = np.sort(t)
+        # at risk of censoring at c: still followed after c, or censored at c
+        at_risk = t.size - np.searchsorted(t_sorted, c_times, side="right") + n_cens
+        surv = np.cumprod(1.0 - n_cens / at_risk)
+        t_max = float(t_sorted[-1])
+        times, cdf = list(c_times), list(1.0 - surv)
+        if t_max > times[-1]:
+            times.append(t_max)
+            cdf.append(1.0)
+        cdf[-1] = 1.0
+        return cls(times=tuple(times), cdf=tuple(cdf), note=note)
+
+    def probability_before(self, t) -> np.ndarray:
+        """P(C < t), pointwise: the censoring probability of an event at t."""
+        k = np.searchsorted(np.asarray(self.times), np.asarray(t, dtype=float), side="left")
+        return np.concatenate([[0.0], self.cdf])[k]
+
+    def calibrated(self, sampler: Sampler, seed: int) -> "EmpiricalCensoring":
+        return self
+
+    def draw(self, cov: Covariates, event_times: np.ndarray,
+             rng: np.random.Generator) -> np.ndarray:
+        k = np.searchsorted(np.asarray(self.cdf), rng.uniform(size=cov.n), side="left")
+        return np.asarray(self.times)[np.minimum(k, len(self.times) - 1)]
+
+    def label(self) -> str:
+        src = f" from {self.note}" if self.note else ""
+        return f"empirical (reverse Kaplan-Meier{src}; {len(self.times)} censoring times)"
+
+
 # --- Analyses -----------------------------------------------------------------------
 
 def median_split(x: np.ndarray) -> np.ndarray:
@@ -360,7 +573,7 @@ class Effect:
 
 
 #: The model fields of `StudyDesign` that `scenario_for` turns into models.
-SCENARIO_FOR_SUPPORTS = ("baseline",)
+SCENARIO_FOR_SUPPORTS = ("baseline", "censoring")
 
 
 def scenario_for(design, effect: Effect, analyses: tuple | None = None,
@@ -371,7 +584,8 @@ def scenario_for(design, effect: Effect, analyses: tuple | None = None,
 
     analyses    : default, the design's Wald test (`CoxWald(engine=design.engine)`).
     censor_rate : the target marginal censoring, for a path that has solved for
-                  it; default, `design.censor_rate_for(effect.per_sd)`.
+                  it; default, `design.censor_rate_for(effect.per_sd)`. Calendar and
+                  empirical censoring are not calibrated and ignore it.
 
     A design option that this function does not turn into a model raises, so
     that it can never fall back to the exponential model without saying so.
@@ -388,9 +602,10 @@ def scenario_for(design, effect: Effect, analyses: tuple | None = None,
     if is_exponential(design.baseline):
         event_times = ExponentialPH(log_hr=log_hr, lambda0=design.lambda0)
     else:
-        require_censoring_above_cure(design.baseline, log_hr, censor_rate)
+        if design.censoring_calibrated:
+            require_censoring_above_cure(design.baseline, log_hr, censor_rate)
         event_times = PHModel(design.baseline, log_hr=log_hr)
-    return Scenario(StandardNormal(), event_times, ExponentialCensoring(target_rate=censor_rate),
+    return Scenario(StandardNormal(), event_times, design.censoring_for(censor_rate),
                     analyses if analyses is not None else (CoxWald(engine=design.engine),))
 
 
@@ -413,7 +628,7 @@ class Replicates:
         v = self.values[name]
         return summarize_replicates(v["reject"], v.get("beta_hat"), v.get("se"),
                                     beta_true=self.scenario.log_hr, events=self.events,
-                                    alpha=self.alpha)
+                                    alpha=self.alpha, n=self.n)
 
 
 def run_replicates(scenario: Scenario, n: int, n_sims: int = 1000, seed: int = 0,
@@ -471,7 +686,8 @@ def simulate(scenario: Scenario, n: int, n_sims: int = 1000, seed: int = 0,
     Returns one row per analysis: ``analysis``, ``n`` and the
     `results.summarize_replicates` columns (power, bias, empirical / model SE
     and coverage, each with its MCSE where it applies; bias and coverage only
-    when the event-time model has a `log_hr`), plus the censoring rate the
+    when the event-time model has a `log_hr`), the realized censored fraction
+    ``censor_rate_realized`` with its MCSE, plus the censoring scale the
     calibration found (``lambda_c``) when the censoring model has one.
     """
     reps = run_replicates(scenario, n, n_sims, seed, alpha, sides)

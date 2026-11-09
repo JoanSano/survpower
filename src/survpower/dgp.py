@@ -8,6 +8,33 @@ from __future__ import annotations
 
 import numpy as np
 
+from .baseline import DEFAULT_LAMBDA0, is_exponential
+
+
+def ph_event_times(eta, rng: np.random.Generator, lambda0: float = DEFAULT_LAMBDA0,
+                   baseline=None) -> np.ndarray:
+    """Event times under PH with linear predictor `eta`: hazard h0(t) e^{eta}.
+
+    With no `baseline` (or a `baseline.Exponential`) this is the exact
+    exponential draw ``rng.exponential(1 / (lambda0 e^eta))`` the engines have
+    always made, so seeded results do not move; an `Exponential` sets lambda0.
+    Any other baseline is sampled by inverting its cumulative hazard,
+    T = H0^{-1}(E e^{-eta}) with E ~ Exp(1) (Bender et al. 2005), from the same
+    number of random draws."""
+    if is_exponential(baseline):
+        lam = lambda0 if baseline is None else baseline.rate
+        return rng.exponential(scale=1.0 / (lam * np.exp(eta)))
+    eta = np.asarray(eta, dtype=float)
+    return baseline.inv_cumhaz(rng.standard_exponential(eta.shape) * np.exp(-eta))
+
+
+def gen_ph(n: int, beta: float, rng: np.random.Generator, lambda0: float = DEFAULT_LAMBDA0,
+           baseline=None):
+    """X ~ N(0, 1) and T | X from PH with per-SD log-HR `beta` and the given
+    baseline (`ph_event_times`). Returns (T, X)."""
+    X = rng.standard_normal(n)
+    return ph_event_times(beta * X, rng, lambda0, baseline), X
+
 
 def gen_exponential_ph(n: int, beta: float, lambda0: float, rng: np.random.Generator):
     """X ~ N(0, 1) and T | X ~ Exponential(lambda0 * exp(beta * X)) -- an exact

@@ -222,3 +222,44 @@ It matters when:
   survival time;
 * you run the waning / crossing scenarios with a fixed clinical window τ;
 * you use Uno's C with a fixed horizon `--c-tau`.
+
+## Shape of the baseline hazard
+
+By default the baseline hazard is constant. `--baseline` changes its shape, and
+`--baseline-shape K` sets the shape parameter. Every family is calibrated in closed form
+so that the baseline (biomarker at its mean) median is `--median-os`:
+
+| `--baseline` | Python | Baseline | `K` |
+|---|---|---|---|
+| `exponential` | `Exponential(m)` | constant hazard \(\ln 2 / m\) | — |
+| `weibull` | `Weibull(m, k)` | \(H_0(t) = \ln 2\,(t/m)^k\) | \(k > 1\): rising hazard; \(k < 1\): falling |
+| `gompertz` | `Gompertz(m, a)` | \(h_0(t) = \lambda e^{a t}\) | \(a\) per month: the hazard is multiplied by \(e^{12a}\) each year |
+| `loglogistic` | `LogLogistic(m, k)` | \(S_0(t) = 1 / (1 + (t/m)^k)\) | \(k > 1\): hazard rises, then falls |
+| (API only) | `PiecewiseExponential(m, breaks, relative_rates)` | constant between breaks | — |
+| (API only) | `NumericBaseline(hazard, m)` | any hazard shape, by quadrature | — |
+
+```python
+from survpower import StudyDesign, Weibull, sample_size
+design = StudyDesign(median_os=15, baseline=Weibull(15, 1.5))  # the medians must agree
+sample_size(hr=1.3, design=design).summary
+```
+
+Event times are drawn by inverting the cumulative hazard: \(T = H_0^{-1}(E\,e^{-\beta X})\)
+with \(E \sim \text{Exp}(1)\) (Bender, Augustin & Blettner 2005). The model is still
+proportional hazards, so the closed-form formulas, which count events, are unchanged.
+
+**What changes.** At a fixed censored fraction, Cox power hardly depends on the shape: the
+Cox fit is unchanged by any monotone map of time applied to \(T\) and \(C\) alike.
+Censoring in the simulations stays exponential, though, so a Weibull design with 20%
+censoring is not a time-rescaled copy of the exponential one, and power can differ slightly
+between baselines. That difference is real, not an error. The shape matters more when
+censoring comes from an accrual calendar, because the calendar is fixed in months: a rising
+hazard puts more of the events inside the follow-up window.
+
+**Gompertz with \(a < 0\)** has a hazard that dies out, so a fraction of patients never
+fails (a cure fraction, \(T = \infty\)). Calibrated to a median, that fraction is always
+below 1/2. The cured are always censored, so the censored fraction cannot be set below
+their share; a lower `--censor-rate` raises an error.
+
+`--sensitivity` still needs the exponential baseline. The waning and crossing scenarios
+have their own constant baseline.

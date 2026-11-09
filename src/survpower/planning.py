@@ -60,34 +60,39 @@ from .concordance import (
 )
 from .design import StudyDesign
 from .results import Estimate, proportion_mcse
-from .scenario import Effect, ExponentialPH, scenario_for
+from .scenario import Effect, ExponentialPH, PHModel, scenario_for
 from .simulate import CONT_VS_DICH, continuous_vs_dichotomized, scenario_power, simulate_power_design
 
 #: Below this many evaluable patients the U-statistic SE of C is anti-
 #: conservative.
 MIN_N_FOR_C_TESTS = 60
 
+#: The model fields that the paths not built on `scenario_for` honour.
+ADJUSTED_SUPPORTS = ("baseline",)
+CONCORDANCE_SUPPORTS = ("baseline",)
+
 
 def _simulated_power(design: StudyDesign, hr_per_sd: float, n: int, censor_rate: float,
                      n_sims: int, seed: int) -> tuple[float, float]:
     """(power, mean_events) of the design's Wald test. Unadjusted designs run the
-    scenario they describe; adjusted ones have their own exponential loop."""
+    scenario they describe; adjusted ones have their own PH loop, which takes the
+    design's baseline hazard."""
     if design.n_covariates == 0:
         return scenario_power(scenario_for(design, Effect.hr(hr_per_sd), censor_rate=censor_rate),
                               n, n_sims, design.alpha, seed, design.sides)
-    design.require_default_models("adjusted analyses")
+    design.require_default_models("adjusted analyses", supports=ADJUSTED_SUPPORTS)
     return simulate_power_design(
         n=n, hr=hr_per_sd, censor_rate=censor_rate, p=design.n_covariates, r2_target=design.r2,
-        lambda0=design.lambda0, n_sims=n_sims, alpha=design.alpha, sides=design.sides, seed=seed,
-        engine=design.engine,
+        n_sims=n_sims, alpha=design.alpha, sides=design.sides, seed=seed,
+        engine=design.engine, **design.baseline_kwargs(),
     )
 
 
 def _has_closed_form(design: StudyDesign, hr_per_sd: float, censor_rate: float) -> bool:
     """Whether the closed-form formulas describe this design's model. Adjusted
-    designs are always exponential PH, by the guard."""
+    designs are always PH, by the guard."""
     if design.n_covariates > 0:
-        design.require_default_models("adjusted analyses")
+        design.require_default_models("adjusted analyses", supports=ADJUSTED_SUPPORTS)
         return True
     return scenario_for(design, Effect.hr(hr_per_sd), censor_rate=censor_rate).has_closed_form
 
@@ -100,12 +105,19 @@ def median_split_summary(design: StudyDesign, n_eval: int, hr_per_sd: float, cen
     events and model-based median OS per group. Simulated on the same kind of
     cohorts with the fast engine (pass `sim` to reuse a run), Schoenfeld closed
     form otherwise. A model with no closed form is always simulated, without the
-    plug-in HR; the median OS is only known for the exponential model."""
+    plug-in HR; the median OS is only known for PH models (NaN when not reached)."""
     scenario = scenario_for(design, Effect.hr(hr_per_sd), CONT_VS_DICH, censor_rate=censor_rate)
     plugin = group_hr_from_persd_hr(hr_per_sd) if scenario.has_closed_form else np.nan
     med_low, med_high = np.nan, np.nan
-    if isinstance(scenario.event_times, ExponentialPH):
+    model = scenario.event_times
+    if isinstance(model, ExponentialPH):
         med_low, med_high = median_split_median_survival(hr_per_sd, design.lambda0)
+    elif isinstance(model, PHModel):
+        # with lambda0 = 1 the group medians are on the cumulative-hazard scale: map them
+        # through H0^{-1}, which is how any PH baseline differs from the exponential one
+        med_low, med_high = (float(model.baseline.inv_cumhaz(np.array(h)))
+                             for h in median_split_median_survival(hr_per_sd, 1.0))
+        med_low, med_high = (m if np.isfinite(m) else np.nan for m in (med_low, med_high))
     if design.engine == "fast" or not scenario.has_closed_form:
         r = sim or continuous_vs_dichotomized(scenario, n_eval, design.n_sims, design.alpha, seed,
                                               design.sides)
@@ -136,7 +148,8 @@ def median_split_text(ms: dict) -> str:
         plugin_txt = "; plug-in HR per SD^1.596, Schoenfeld closed form"
     hr_txt = (f"a high-vs-low HR of {ms['split_hr']:.2f} (typical 95% CI "
               f"{ms['split_hr_ci_low']:.2f} to {ms['split_hr_ci_high']:.2f}{plugin_txt})")
-    median_txt = ("" if np.isnan(ms["split_median_os_high"]) else
+    median_txt = ("" if np.isnan(ms["split_median_os_high"]) or np.isnan(ms["split_median_os_low"])
+                  else
                   f" and median OS {ms['split_median_os_high']:.1f} vs "
                   f"{ms['split_median_os_low']:.1f} months")
     return (f"{ms['split_power']:.0%} power and would estimate {hr_txt}, with "
@@ -311,7 +324,7 @@ def sample_size(
 
     auto = method == "auto"
     out = estimate_required_n_by_simulation(
-        hr=hr_sd, target_power=power, censor_rate=cr, lambda0=design.lambda0,
+        hr=hr_sd, target_power=power, censor_rate=cr,
         alpha=design.alpha, n_sims_per_point=design.n_sims_grid,
         confirm_n_sims=design.n_sims, seed=seed,
         p=design.n_covariates, r2_target=design.r2, sides=design.sides,
@@ -436,7 +449,7 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
             cr = detectable_censor_rate(design, n_eval, pw)
             for run in range(MAX_DETECTABLE_RUNS):
                 out = estimate_detectable_hr_by_simulation(
-                    n=n_eval, target_power=pw, censor_rate=cr, lambda0=design.lambda0,
+                    n=n_eval, target_power=pw, censor_rate=cr,
                     alpha=design.alpha, p=design.n_covariates, r2_target=design.r2,
                     sides=design.sides, n_sims_per_point=design.n_sims_grid,
                     confirm_n_sims=design.n_sims, seed=design.seed + 101 * combo,
@@ -508,17 +521,18 @@ def run_detectable_effect_mode(design: StudyDesign, ns: list, powers: list) -> p
 
 def _cindex_context(design: StudyDesign, c: float) -> dict:
     """beta, censoring, horizon, estimator limit and sigma_C for a target C."""
-    design.require_default_models("concordance questions")
+    design.require_default_models("concordance questions", supports=CONCORDANCE_SUPPORTS)
     if design.n_covariates > 0:
         raise ValueError("concordance questions are univariate; for a biomarker added to a "
                          "clinical model, power its adjusted hazard ratio instead")
     beta = beta_of_c(c)
+    model = design.baseline_kwargs()
     lam_c = design.lambda_c_for(np.exp(beta))
     tau = None
     if design.c_estimator == "uno":
-        tau = design.c_tau if design.c_tau is not None else default_uno_tau(beta, lam_c, design.lambda0)
-    c_lim = concordance_limit(beta, lam_c, design.c_estimator, tau=tau, lambda0=design.lambda0)
-    sig = sigma_c(beta, lam_c, design.c_estimator, tau=tau, lambda0=design.lambda0)
+        tau = design.c_tau if design.c_tau is not None else default_uno_tau(beta, lam_c, **model)
+    c_lim = concordance_limit(beta, lam_c, design.c_estimator, tau=tau, **model)
+    sig = sigma_c(beta, lam_c, design.c_estimator, tau=tau, **model)
     return dict(beta=beta, lam_c=lam_c, tau=tau, c_limit=c_lim, sigma_c=sig,
                 censor_rate=design.censor_rate_for(np.exp(beta)))
 
@@ -552,7 +566,7 @@ def run_cindex_benchmark_mode(design: StudyDesign, cs: list, c0s: list,
             def power_fn(n, n_sims, s, _c0=c0):
                 r = simulate_cindex_power(n, ctx["beta"], ctx["lam_c"], n_sims=n_sims,
                                           alpha=design.alpha, c0=_c0, method=design.c_estimator,
-                                          tau=ctx["tau"], lambda0=design.lambda0, seed=s)
+                                          tau=ctx["tau"], seed=s, **design.baseline_kwargs())
                 return r["power_cc0"], r["mean_events"]
 
             base = dict(_cindex_columns(design, c, ctx), c0=c0)
@@ -631,7 +645,8 @@ def run_cindex_precision_mode(design: StudyDesign, cs: list, half_widths: list |
                 r = simulate_cindex_power(n_eval, ctx["beta"], ctx["lam_c"],
                                           n_sims=n_check,
                                           method=design.c_estimator, tau=ctx["tau"],
-                                          lambda0=design.lambda0, seed=design.seed + 101 * combo)
+                                          seed=design.seed + 101 * combo,
+                                          **design.baseline_kwargs())
                 sim_hw, sim_hw_mcse = 1.96 * r["sd_c"], 1.96 * r["sd_c_mcse"]
             row = dict(base, n_enrolled=n_enrol, n_evaluable=n_eval,
                        half_width_closed_form=round(hw, 4), half_width_simulated=round(sim_hw, 4),

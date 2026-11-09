@@ -17,7 +17,7 @@ re-exported from the top-level package (`from survpower import ...`).
 | `survpower.sensitivity` | collinearity, EPV, prognostic / omitted covariate and non-PH studies |
 | `survpower.fitting` | fast univariate Cox solver and Wald decisions |
 | `survpower.dgp` | event-time generators |
-| `survpower.baseline` | baseline hazard calibration |
+| `survpower.baseline` | baseline-hazard families (exponential, Weibull, Gompertz, piecewise exponential, log-logistic, numeric) calibrated to a median OS |
 | `survpower.plotting` | figures |
 
 ## Design

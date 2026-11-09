@@ -30,9 +30,10 @@ import numpy as np
 import pandas as pd
 
 from ._utils import tqdm
-from .baseline import DEFAULT_LAMBDA0, median_os_to_lambda0
-from .censoring import calibrate_censoring_for
-from .dgp import gen_adjustment_covariates
+from .baseline import (DEFAULT_LAMBDA0, BaselineHazard, is_exponential, marginal_median,
+                       median_os_to_lambda0)
+from .censoring import calibrate_censoring_for, require_censoring_above_cure
+from .dgp import gen_adjustment_covariates, ph_event_times
 from .fitting import ENGINES, cox_fit_1d, fit_cox, logrank_1d, rejects, wald_rejects
 from .results import summarize_replicates
 
@@ -158,6 +159,34 @@ class ExponentialPH:
 
     def survival(self, t, x) -> np.ndarray:
         return np.exp(-self._rate(x) * np.asarray(t, dtype=float))
+
+
+@dataclass(frozen=True)
+class PHModel:
+    """Cox PH with any baseline hazard (`survpower.baseline`): hazard
+    h0(t) exp(log_hr * X), drawn as T = H0^{-1}(E exp(-log_hr * X)) with
+    E ~ Exp(1). A defective baseline (Gompertz with shape < 0) gives T = inf
+    for the cured fraction.
+
+    With an `Exponential` baseline it makes the same draws as
+    ``ExponentialPH(b, ln 2 / m)`` (`dgp.ph_event_times`), which `scenario_for`
+    still builds for the default design."""
+
+    baseline: BaselineHazard
+    log_hr: float = 0.0
+    is_ph: bool = field(default=True, init=False)
+
+    def draw(self, cov: Covariates, rng: np.random.Generator) -> np.ndarray:
+        return ph_event_times(self.log_hr * cov.X, rng, baseline=self.baseline)
+
+    def survival(self, t, x) -> np.ndarray:
+        x = np.asarray(x, dtype=float)
+        return np.exp(-self.baseline.cumhaz(t) * np.exp(self.log_hr * x))
+
+    def marginal_median(self) -> float:
+        """Median of T over X ~ N(0, 1): differs from the baseline (X = 0)
+        median `baseline.median` once log_hr != 0."""
+        return marginal_median(self.baseline, self.log_hr)
 
 
 # --- Censoring models -------------------------------------------------------------
@@ -330,6 +359,10 @@ class Effect:
         return cls("hr", per_sd)
 
 
+#: The model fields of `StudyDesign` that `scenario_for` turns into models.
+SCENARIO_FOR_SUPPORTS = ("baseline",)
+
+
 def scenario_for(design, effect: Effect, analyses: tuple | None = None,
                  censor_rate: float | None = None) -> Scenario:
     """The scenario that a `StudyDesign` and an `Effect` describe: the one place
@@ -346,14 +379,18 @@ def scenario_for(design, effect: Effect, analyses: tuple | None = None,
     if design.n_covariates > 0:
         raise ValueError("scenario_for covers unadjusted analyses; this design has "
                          f"n_covariates = {design.n_covariates}")
-    design.require_default_models("scenario_for")
+    design.require_default_models("scenario_for", supports=SCENARIO_FOR_SUPPORTS)
     if effect.scale != "hr":
         raise ValueError(f"no event-time model for an effect on the {effect.scale} scale")
     if censor_rate is None:
         censor_rate = design.censor_rate_for(effect.per_sd)
-    return Scenario(StandardNormal(),
-                    ExponentialPH(log_hr=np.log(effect.per_sd), lambda0=design.lambda0),
-                    ExponentialCensoring(target_rate=censor_rate),
+    log_hr = np.log(effect.per_sd)
+    if is_exponential(design.baseline):
+        event_times = ExponentialPH(log_hr=log_hr, lambda0=design.lambda0)
+    else:
+        require_censoring_above_cure(design.baseline, log_hr, censor_rate)
+        event_times = PHModel(design.baseline, log_hr=log_hr)
+    return Scenario(StandardNormal(), event_times, ExponentialCensoring(target_rate=censor_rate),
                     analyses if analyses is not None else (CoxWald(engine=design.engine),))
 
 

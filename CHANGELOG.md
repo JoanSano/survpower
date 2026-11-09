@@ -3,10 +3,30 @@
 ## Unreleased
 
 ### Added
+- **Baseline-hazard families** (#14), calibrated in closed form so that the baseline median
+  is `median_os`: `Exponential`, `Weibull`, `Gompertz` (with a cure fraction when its shape
+  is negative), `PiecewiseExponential`, `LogLogistic` and `NumericBaseline` (any hazard
+  shape, by quadrature; API only), in `survpower.baseline`. `StudyDesign(baseline=...)`
+  selects one; the CLI has `--baseline {exponential,weibull,gompertz,loglogistic}` and
+  `--baseline-shape K` on every command. Every planning path supports them except
+  `--sensitivity`, which raises. `scenario.PHModel` samples PH event times by inverting the
+  cumulative hazard; `marginal_median` gives the median over the biomarker. With no
+  `baseline`, results at fixed seeds are unchanged.
+- `censor_rate_from_design`, `calibrate_censoring_rate`, the concordance limits and
+  simulations, `simulate_power`, `simulate_power_design`, `simulate_power_with_adjustment`
+  and `simulate_continuous_vs_dichotomized` take a `baseline=` keyword. `harrell_limit`
+  falls back to Monte Carlo over censored pairs for a non-exponential baseline.
+- With a PH baseline, the median-split summaries report each group's model-based median
+  OS for any family, not only the exponential one.
 - `survpower.simulate_cohort` (provisional): one simulated cohort from a `Scenario`, with
   `time`, `event`, `X`, `Z0..Zp-1` and the latent `T` and `C`, drawn with the same models
   and censoring calibration as `simulate` (#78). `scenario.CorrelatedCovariates` gives
   scenarios adjustment covariates with a target R² on X.
+
+### Changed
+- `StudyDesign.lambda0` raises for a non-exponential baseline, pointing to
+  `StudyDesign.baseline`. `require_default_models` takes `supports=`, the model fields a
+  path honours.
 
 ### Removed
 - **The flag-only CLI syntax** (`survpower --hr 1.15 ...`), deprecated in 0.4.0. A first

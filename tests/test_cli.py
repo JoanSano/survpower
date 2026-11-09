@@ -252,3 +252,39 @@ def test_report_is_no_longer_a_command(capsys):
 def test_report_module_is_gone():
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("survpower.report")
+
+
+# --- baseline hazards (#14) -----------------------------------------------------------
+
+@pytest.mark.parametrize("family, shape", [("weibull", "1.5"), ("gompertz", "0.03"),
+                                           ("loglogistic", "2")])
+def test_baseline_flags(tmp_path, family, shape, capsys):
+    out = run(tmp_path, "power", "--hr", "1.3", "--n", "150", "--baseline", family,
+              "--baseline-shape", shape)
+    df = pd.read_csv(out / "power_analysis.csv")
+    assert df["power_sim"].between(0, 1).all()
+    assert "baseline hazard" in capsys.readouterr().out
+
+
+def test_baseline_reaches_concordance_and_adjusted_commands(tmp_path):
+    run(tmp_path, "precision", "--c-index", "0.7", "--n", "100", "--baseline", "weibull",
+        "--baseline-shape", "0.8")
+    run(tmp_path, "power", "--hr", "1.3", "--n", "150", "--n-covariates", "2", "--r2", "0.2",
+        "--baseline", "weibull", "--baseline-shape", "1.5")
+
+
+@pytest.mark.parametrize("args, message", [
+    (["--baseline", "weibull"], "requires --baseline-shape"),
+    (["--baseline-shape", "1.5"], "--baseline-shape would have no effect"),
+    (["--baseline", "weibull", "--baseline-shape", "-1"], "--baseline-shape"),
+    (["--baseline", "gompertz", "--baseline-shape", "100"], "--baseline-shape"),
+    (["--baseline", "weibull", "--baseline-shape", "1.5", "--sensitivity", "epv"],
+     "--sensitivity supports only --baseline exponential"),
+    (["--baseline", "gompertz", "--baseline-shape", "-0.08"], "above the cure fraction"),
+])
+def test_baseline_flag_errors(args, message, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["power", "--hr", "1.3", "--n", "150", *args])
+    assert exc.value.code == 2
+    assert message in capsys.readouterr().err
+

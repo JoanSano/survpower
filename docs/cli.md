@@ -61,6 +61,18 @@ On every command.
 | `--accrual-months`, `--followup-months` | | uniform accrual period and minimum follow-up after the last enrolment |
 | `--dropout` | 0 | annual loss-to-follow-up fraction (with the accrual design) |
 
+## Event model
+
+On every command. Not with `--sensitivity`, whose scenarios have a constant baseline.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--baseline {exponential,weibull,gompertz,loglogistic}` | exponential | shape of the baseline hazard, calibrated so that the baseline median is `--median-os` |
+| `--baseline-shape K` | | required with a non-exponential `--baseline`: `k` for `weibull` and `loglogistic`; for `gompertz`, `a` per month (the hazard is multiplied by e^(12a) each year; `a < 0` gives a cure fraction) |
+
+A piecewise-exponential or user-supplied hazard is available from Python only; see
+[the shape of the baseline hazard](concepts/censoring-and-accrual.md#shape-of-the-baseline-hazard).
+
 ## Adjustment
 
 On `power`, `sample-size` and `detectable-effect`.

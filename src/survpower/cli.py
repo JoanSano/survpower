@@ -24,7 +24,8 @@ import time
 import pandas as pd
 
 from . import __version__
-from .baseline import DEFAULT_MEDIAN_OS_MONTHS, DEFAULT_TAU_MONTHS
+from .baseline import (DEFAULT_CENSOR_RATE, DEFAULT_MEDIAN_OS_MONTHS, DEFAULT_TAU_MONTHS, FAMILIES,
+                       SHAPE_FAMILIES)
 from .concordance import ESTIMATORS, hr_of_c
 from .design import StudyDesign
 from .fitting import ENGINES
@@ -101,6 +102,18 @@ def _flag_groups() -> dict:
             (["--non-evaluable"], dict(type=float, default=0.0,
                                        help="fraction of enrolled patients without a usable "
                                             "biomarker value")),
+        ),
+        event_model=_group(
+            "event model",
+            (["--baseline"], dict(choices=("exponential",) + SHAPE_FAMILIES, default="exponential",
+                                  help="shape of the baseline hazard, calibrated so the baseline "
+                                       "median is --median-os (piecewise exponential: Python API)")),
+            (["--baseline-shape"], dict(type=float, default=None, metavar="K",
+                                        help="shape of a non-exponential --baseline: k for weibull "
+                                             "(H0 ~ t^k; >1 rising hazard) and loglogistic "
+                                             "(S0 = 1/(1 + (t/m)^k)); for gompertz, a per month "
+                                             "(the hazard is multiplied by e^(12a) each year; <0 "
+                                             "gives a cure fraction)")),
         ),
         censoring=_group(
             "censoring",
@@ -188,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"survpower {__version__}")
     commands = parser.add_subparsers(dest="command", metavar="COMMAND")
     g = _flag_groups()
-    common = [g["population"], g["censoring"], g["simulation"]]
+    common = [g["population"], g["event_model"], g["censoring"], g["simulation"]]
     association = [g["alpha"], g["sides"], *common, g["adjustment"], g["sensitivity"], g["engine"]]
     concordance = [*common, g["concordance"]]
 
@@ -256,15 +269,40 @@ DESIGN_FLAGS = {
     "non_evaluable": "--non-evaluable", "n_covariates": "--n-covariates", "r2": "--r2",
     "biomarker_sd": "--biomarker-sd", "c_estimator": "--c-estimator", "c_tau": "--c-tau",
     "engine": "--engine", "n_sims": "--n-sims", "n_sims_grid": "--n-sims-grid", "seed": "--seed",
+    "baseline": "--baseline",
 }
+#: Design fields that are not one flag's value: built by `_build_baseline`.
+COMPOSITE_FIELDS = ("baseline",)
+
+
+def _build_baseline(args: argparse.Namespace):
+    """The `baseline` field from --baseline, --baseline-shape and --median-os."""
+    family, shape = args.baseline, args.baseline_shape
+    if family == "exponential":
+        if shape is not None:
+            args.subparser.error("--baseline-shape would have no effect: it only applies to a "
+                                 "non-exponential --baseline")
+        return None
+    if shape is None:
+        args.subparser.error(f"--baseline {family} requires --baseline-shape")
+    try:
+        return FAMILIES[family](median_os=args.median_os, shape=shape)
+    except ValueError as exc:
+        msg = str(exc).replace("median_os", "--median-os")
+        if "shape" in msg:
+            msg = "--baseline-shape: " + msg.replace("shape", "the shape", 1)
+        args.subparser.error(msg)
 
 
 def _build_design(args: argparse.Namespace) -> StudyDesign:
     """The design from the flags this command has; the rest keep `StudyDesign`'s defaults."""
-    dests = {field: flag[2:].replace("-", "_") for field, flag in DESIGN_FLAGS.items()}
+    dests = {field: flag[2:].replace("-", "_") for field, flag in DESIGN_FLAGS.items()
+             if field not in COMPOSITE_FIELDS}
+    kwargs = {field: getattr(args, dest) for field, dest in dests.items() if hasattr(args, dest)}
+    if hasattr(args, "baseline"):
+        kwargs["baseline"] = _build_baseline(args)
     try:
-        return StudyDesign(**{field: getattr(args, dest) for field, dest in dests.items()
-                              if hasattr(args, dest)})
+        return StudyDesign(**kwargs)
     except ValueError as exc:
         fields = r"\b(" + "|".join(DESIGN_FLAGS) + r")\b"
         args.subparser.error(re.sub(fields, lambda m: DESIGN_FLAGS[m.group(1)], str(exc)))
@@ -311,13 +349,24 @@ def _validate(args: argparse.Namespace) -> StudyDesign:
         fail("--power values must be in (alpha, 1)")
     if args.n and any(design.evaluable(n) < 10 for n in args.n):
         fail("fewer than 10 evaluable patients after --non-evaluable")
+    cure = design.baseline_hazard.cure_fraction
+    rate = DEFAULT_CENSOR_RATE if design.censor_rate is None else design.censor_rate
+    if cure > 0 and design.accrual_months is None and rate <= cure + 1e-3:
+        fail(f"--censor-rate must be above the cure fraction {cure:.3g} of this --baseline: "
+             f"the cured are always censored")
+    if getattr(args, "sensitivity", None) and design.non_default_models():
+        fail(f"--sensitivity supports only --baseline exponential, not --baseline {args.baseline}")
     return design
 
 
 def _print_assumptions(design: StudyDesign, command: str) -> None:
     print("=" * 70 + "\nDesign assumptions\n" + "=" * 70)
-    print(f"  baseline median OS : {design.median_os:g} months "
-          f"(lambda0 = {design.lambda0:.5f} / month; constant baseline hazard)")
+    if design.non_default_models():
+        print(f"  baseline median OS : {design.median_os:g} months "
+              f"({design.baseline.label()} baseline hazard)")
+    else:
+        print(f"  baseline median OS : {design.median_os:g} months "
+              f"(lambda0 = {design.lambda0:.5f} / month; constant baseline hazard)")
     scale = "SD" if design.biomarker_sd is None else f"raw unit (SD = {design.biomarker_sd:g})"
     print(f"  biomarker          : continuous, ~Normal; effects as HR per {scale}")
     if command == "benchmark":

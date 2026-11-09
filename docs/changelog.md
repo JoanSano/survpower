@@ -1,13 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Added
-- `survpower.simulate_cohort` (provisional): one simulated cohort from a `Scenario`, with
-  `time`, `event`, `X`, `Z0..Zp-1` and the latent `T` and `C`, drawn with the same models
-  and censoring calibration as `simulate` (#78). `scenario.CorrelatedCovariates` gives
-  scenarios adjustment covariates with a target R² on X.
-
 ## 0.4.0 — 2026-11-06
 
 Milestone M1.5 (CLI and model seams): question subcommands (#61), one route from

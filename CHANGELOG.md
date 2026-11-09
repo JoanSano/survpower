@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+- `survpower.simulate_cohort` (provisional): one simulated cohort from a `Scenario`, with
+  `time`, `event`, `X`, `Z0..Zp-1` and the latent `T` and `C`, drawn with the same models
+  and censoring calibration as `simulate` (#78). `scenario.CorrelatedCovariates` gives
+  scenarios adjustment covariates with a target R² on X.
+
 ### Removed
 - **The flag-only CLI syntax** (`survpower --hr 1.15 ...`), deprecated in 0.4.0. A first
   argument that starts with `--`, other than `--help` and `--version`, now exits with

@@ -21,11 +21,12 @@ import re
 import sys
 import time
 
+import numpy as np
 import pandas as pd
 
 from . import __version__
 from .baseline import (DEFAULT_CENSOR_RATE, DEFAULT_MEDIAN_OS_MONTHS, DEFAULT_TAU_MONTHS, FAMILIES,
-                       SHAPE_FAMILIES)
+                       SHAPE_FAMILIES, EmpiricalBaseline)
 from .concordance import ESTIMATORS, hr_of_c
 from .design import StudyDesign
 from .fitting import ENGINES
@@ -93,9 +94,9 @@ def _flag_groups() -> dict:
                                                 help="one- or two-sided Wald test"))),
         population=_group(
             "population",
-            (["--median-os"], dict(type=float, default=DEFAULT_MEDIAN_OS_MONTHS,
+            (["--median-os"], dict(type=float, default=None,
                                    help="baseline (biomarker at its mean) median overall "
-                                        "survival, months")),
+                                        f"survival, months [default: {DEFAULT_MEDIAN_OS_MONTHS:g}]")),
             (["--biomarker-sd"], dict(type=float, default=None,
                                       help="SD of the raw biomarker; if set, HRs are per raw "
                                            "unit (HR**SD per SD)")),
@@ -114,6 +115,13 @@ def _flag_groups() -> dict:
                                              "(S0 = 1/(1 + (t/m)^k)); for gompertz, a per month "
                                              "(the hazard is multiplied by e^(12a) each year; <0 "
                                              "gives a cure fraction)")),
+            (["--baseline-data"], dict(default=None, metavar="CSV",
+                                       help="estimate the baseline from a cohort instead: "
+                                            "Breslow's estimator, with the biomarker if its column "
+                                            "is given (else Nelson-Aalen); sets the median OS")),
+            (["--baseline-columns"], dict(nargs="+", default=None, metavar="COL",
+                                          help="TIME EVENT [BIOMARKER] columns of --baseline-data "
+                                               "[default: os status]")),
         ),
         censoring=_group(
             "censoring",
@@ -275,9 +283,44 @@ DESIGN_FLAGS = {
 COMPOSITE_FIELDS = ("baseline",)
 
 
+def _baseline_from_data(args: argparse.Namespace) -> EmpiricalBaseline:
+    """The Breslow baseline of --baseline-data; its fit is kept in `args.baseline_info`."""
+    fail = args.subparser.error
+    if args.baseline != "exponential" or args.baseline_shape is not None:
+        fail("--baseline-data replaces --baseline and --baseline-shape")
+    if args.median_os is not None:
+        fail("--median-os would have no effect: the baseline median comes from --baseline-data")
+    columns = args.baseline_columns or ["os", "status"]
+    if len(columns) not in (2, 3):
+        fail("--baseline-columns takes TIME EVENT [BIOMARKER]")
+    try:
+        data = pd.read_csv(args.baseline_data)
+    except (OSError, ValueError) as exc:
+        fail(f"--baseline-data: cannot read {args.baseline_data}: {exc}")
+    missing = [c for c in columns if c not in data.columns]
+    if missing:
+        fail(f"--baseline-data has no column(s) {', '.join(missing)}; it has "
+             f"{', '.join(map(str, data.columns))} (see --baseline-columns)")
+    try:
+        baseline, info = EmpiricalBaseline.from_data_info(
+            data[columns[0]], data[columns[1]], data[columns[2]] if len(columns) == 3 else None,
+            note=os.path.basename(args.baseline_data))
+    except ValueError as exc:
+        fail(f"--baseline-data: {exc}")
+    args.baseline_info = dict(info, biomarker=columns[2] if len(columns) == 3 else None)
+    return baseline
+
+
 def _build_baseline(args: argparse.Namespace):
-    """The `baseline` field from --baseline, --baseline-shape and --median-os."""
+    """The `baseline` field from --baseline, --baseline-shape and --median-os, or from
+    --baseline-data."""
+    if args.baseline_data is not None:
+        return _baseline_from_data(args)
+    if args.baseline_columns is not None:
+        args.subparser.error("--baseline-columns would have no effect: it only applies to "
+                             "--baseline-data")
     family, shape = args.baseline, args.baseline_shape
+    median_os = DEFAULT_MEDIAN_OS_MONTHS if args.median_os is None else args.median_os
     if family == "exponential":
         if shape is not None:
             args.subparser.error("--baseline-shape would have no effect: it only applies to a "
@@ -286,7 +329,7 @@ def _build_baseline(args: argparse.Namespace):
     if shape is None:
         args.subparser.error(f"--baseline {family} requires --baseline-shape")
     try:
-        return FAMILIES[family](median_os=args.median_os, shape=shape)
+        return FAMILIES[family](median_os=median_os, shape=shape)
     except ValueError as exc:
         msg = str(exc).replace("median_os", "--median-os")
         if "shape" in msg:
@@ -299,8 +342,12 @@ def _build_design(args: argparse.Namespace) -> StudyDesign:
     dests = {field: flag[2:].replace("-", "_") for field, flag in DESIGN_FLAGS.items()
              if field not in COMPOSITE_FIELDS}
     kwargs = {field: getattr(args, dest) for field, dest in dests.items() if hasattr(args, dest)}
+    if kwargs.get("median_os", 0) is None:  # not given: StudyDesign's default
+        del kwargs["median_os"]
     if hasattr(args, "baseline"):
         kwargs["baseline"] = _build_baseline(args)
+        if isinstance(kwargs["baseline"], EmpiricalBaseline):
+            kwargs["median_os"] = kwargs["baseline"].median
     try:
         return StudyDesign(**kwargs)
     except ValueError as exc:
@@ -355,13 +402,26 @@ def _validate(args: argparse.Namespace) -> StudyDesign:
         fail(f"--censor-rate must be above the cure fraction {cure:.3g} of this --baseline: "
              f"the cured are always censored")
     if getattr(args, "sensitivity", None) and design.non_default_models():
-        fail(f"--sensitivity supports only --baseline exponential, not --baseline {args.baseline}")
+        fail("--sensitivity supports only the exponential baseline (no --baseline or "
+             "--baseline-data)")
     return design
 
 
-def _print_assumptions(design: StudyDesign, command: str) -> None:
+def _print_assumptions(design: StudyDesign, command: str,
+                       baseline_info: dict | None = None) -> None:
     print("=" * 70 + "\nDesign assumptions\n" + "=" * 70)
-    if design.non_default_models():
+    if baseline_info is not None:
+        b, info = design.baseline, baseline_info
+        where = "" if b.median_estimated else " (beyond the data: extrapolated tail)"
+        print(f"  baseline median OS : {design.median_os:.3g} months{where}")
+        print(f"  baseline hazard    : {b.label()}; n = {info['n']}, {info['events']} events")
+        if info["biomarker"] is None:
+            print("                       no biomarker column: Nelson-Aalen, the marginal hazard")
+        else:
+            print(f"                       biomarker {info['biomarker']}: fitted HR per SD "
+                  f"{np.exp(info['beta_hat']):.3g} (SE of log-HR {info['se']:.3g}; "
+                  f"SD = {info['biomarker_sd']:.3g})")
+    elif design.non_default_models():
         print(f"  baseline median OS : {design.median_os:g} months "
               f"({design.baseline.label()} baseline hazard)")
     else:
@@ -505,7 +565,7 @@ def main(argv: list | None = None) -> None:
     design = _validate(args)
     os.makedirs(args.outdir, exist_ok=True)
     t0 = time.time()
-    _print_assumptions(design, args.command)
+    _print_assumptions(design, args.command, getattr(args, "baseline_info", None))
     planning_points = args.run(args, design)
     if getattr(args, "sensitivity", None):
         _run_sensitivity(args, design, planning_points)

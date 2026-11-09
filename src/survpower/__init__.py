@@ -14,6 +14,7 @@ from .baseline import (
     DEFAULT_LAMBDA0,
     DEFAULT_MEDIAN_OS_MONTHS,
     DEFAULT_TAU_MONTHS,
+    EmpiricalBaseline,
     Exponential,
     Gompertz,
     LogLogistic,

@@ -261,5 +261,40 @@ fails (a cure fraction, \(T = \infty\)). Calibrated to a median, that fraction i
 below 1/2. The cured are always censored, so the censored fraction cannot be set below
 their share; a lower `--censor-rate` raises an error.
 
+### A baseline estimated from a cohort
+
+With a cohort at hand (a CSV of follow-up, status and, ideally, the biomarker), the
+baseline can be estimated rather than assumed:
+
+```bash
+survpower sample-size --hr 1.3 --baseline-data cohort.csv --baseline-columns os status ki67
+```
+
+```python
+import pandas as pd
+from survpower import EmpiricalBaseline, StudyDesign, sample_size
+df = pd.read_csv("cohort.csv")
+b, info = EmpiricalBaseline.from_data_info(df.os, df.status, df.ki67)
+design = StudyDesign(median_os=b.median, baseline=b)
+```
+
+With the biomarker, it is standardized and a Cox model is fitted; Breslow's estimator then
+gives the cumulative hazard of a patient with the **mean biomarker**, which is the baseline
+the simulations multiply by \(e^{\beta X}\):
+
+\[
+\hat H_0(t) = \sum_{t_i \le t} \frac{d_i}{\sum_{j \in R(t_i)} e^{\hat\beta z_j}}.
+\]
+
+Without the biomarker, \(\hat\beta = 0\): this is the Nelson–Aalen estimate of the cohort's
+*marginal* cumulative hazard (the Kaplan–Meier curve's), which is not the baseline when the
+biomarker matters, though it is close for a small effect.
+
+\(\hat H_0\) is interpolated linearly between event times (a constant hazard between them).
+Past the last event it is extrapolated at the average hazard of the last 10 events; the
+output says when the median lies in that extrapolated tail. The fitted HR in the cohort is
+reported for reference: the planning HR is still the one you give. The estimate is treated
+as known, so its own uncertainty is not part of the power.
+
 `--sensitivity` still needs the exponential baseline. The waning and crossing scenarios
 have their own constant baseline.

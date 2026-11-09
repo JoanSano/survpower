@@ -84,7 +84,8 @@ def _positive(name: str, value: float) -> None:
 
 class _Baseline:
     """Common base of the families: survival, density, cure fraction, JSON form.
-    Subclasses are frozen dataclasses whose first field is `median_os`."""
+    Subclasses are frozen dataclasses with a `median_os` (a field, or for
+    `EmpiricalBaseline` a property)."""
 
     family: ClassVar[str]
     #: An API-only model cannot be written to JSON or the CLI (it holds a function).
@@ -437,9 +438,156 @@ class NumericBaseline(_Baseline):
         return "numeric (user-supplied hazard)"
 
 
+@dataclass(frozen=True)
+class EmpiricalBaseline(_Baseline):
+    """A baseline estimated from a cohort (#84): build it with `from_data`.
+
+    The cumulative hazard is known at the cohort's distinct event times
+    (`times`, `cumhaz`, from Breslow's estimator) and interpolated linearly
+    between them, starting at H0(0) = 0: a constant hazard between consecutive
+    event times. Past the last event time it grows at `tail_hazard` (per
+    month). The median is the estimated one, not an input, so a design needs
+    ``StudyDesign(median_os=b.median, baseline=b)``. `note` describes the
+    source in summaries."""
+
+    times: tuple = ()
+    cumhaz_values: tuple = ()
+    tail_hazard: float = 0.0
+    note: str = ""
+    family: ClassVar[str] = "empirical"
+
+    #: Default number of final events whose average hazard sets the tail.
+    TAIL_EVENTS: ClassVar[int] = 10
+
+    def __post_init__(self):
+        times = tuple(float(t) for t in self.times)
+        values = tuple(float(h) for h in self.cumhaz_values)
+        object.__setattr__(self, "times", times)
+        object.__setattr__(self, "cumhaz_values", values)
+        object.__setattr__(self, "tail_hazard", float(self.tail_hazard))
+        if len(times) < 2 or len(times) != len(values):
+            raise ValueError("times and cumhaz_values need the same length, at least 2")
+        if times[0] <= 0 or any(np.diff(times) <= 0) or not np.isfinite(times[-1]):
+            raise ValueError("times must be positive, finite and increasing")
+        if values[0] <= 0 or any(np.diff(values) <= 0) or not np.isfinite(values[-1]):
+            raise ValueError("cumhaz_values must be positive, finite and increasing")
+        _positive("tail_hazard", self.tail_hazard)
+
+    @classmethod
+    def from_data(cls, time, event, biomarker=None, tail_hazard: float | None = None,
+                  tail_events: int | None = None, note: str = "") -> "EmpiricalBaseline":
+        """Breslow's baseline cumulative hazard of a cohort.
+
+        time, event : follow-up (months) and event indicator (1 = death).
+        biomarker   : optional. It is standardized (X = 0 is the mean biomarker,
+                      effects per SD, as in planning), a Cox model is fitted
+                      (lifelines, Efron ties), and
+                      H0(t) = sum_{t_i <= t} d_i / sum_{j at risk at t_i} exp(beta_hat z_j).
+                      Without it, beta = 0: the Nelson-Aalen estimate of the
+                      marginal cumulative hazard, which is not the X = 0
+                      baseline when the biomarker has an effect.
+        tail_hazard : hazard past the last event time; default, the average
+                      hazard over the last `tail_events` (10) events.
+
+        Rows with a missing value are dropped. The fitted per-SD HR, its SE and
+        the counts are in `from_data_info`.
+        """
+        b, _ = cls._fit(time, event, biomarker, tail_hazard, tail_events, note)
+        return b
+
+    @classmethod
+    def from_data_info(cls, time, event, biomarker=None, **kwargs) -> tuple:
+        """`from_data`, plus a dict: n, events, beta_hat and its se (per SD;
+        NaN without a biomarker), and the biomarker mean and SD."""
+        return cls._fit(time, event, biomarker, kwargs.get("tail_hazard"),
+                        kwargs.get("tail_events"), kwargs.get("note", ""))
+
+    @classmethod
+    def _fit(cls, time, event, biomarker, tail_hazard, tail_events, note):
+        cols = [np.asarray(time, dtype=float), np.asarray(event, dtype=float)]
+        if biomarker is not None:
+            cols.append(np.asarray(biomarker, dtype=float))
+        keep = np.all([np.isfinite(c) for c in cols], axis=0)
+        t, d = cols[0][keep], cols[1][keep]
+        if np.any(t <= 0):
+            raise ValueError(f"follow-up times must be positive ({int(np.sum(t <= 0))} row(s) "
+                             f"are not)")
+        if not np.all(np.isin(d, (0, 1))):
+            raise ValueError("the event indicator must be 0 or 1")
+        d = d.astype(bool)
+        info = dict(n=int(t.size), events=int(d.sum()), beta_hat=np.nan, se=np.nan,
+                    biomarker_mean=np.nan, biomarker_sd=np.nan)
+        w = np.ones(t.size)
+        if biomarker is not None:
+            x = cols[2][keep]
+            mu, sd = float(x.mean()), float(x.std(ddof=1))
+            if not sd > 0:
+                raise ValueError("the biomarker is constant")
+            z = (x - mu) / sd
+            from lifelines import CoxPHFitter
+            import pandas as pd
+            cph = CoxPHFitter().fit(pd.DataFrame(dict(time=t, event=d.astype(int), z=z)),
+                                    duration_col="time", event_col="event")
+            beta = float(cph.params_["z"])
+            info.update(beta_hat=beta, se=float(cph.standard_errors_["z"]),
+                        biomarker_mean=mu, biomarker_sd=sd)
+            w = np.exp(beta * z)
+        # Breslow: at each distinct event time, deaths / sum of weights still at risk
+        event_times, deaths = np.unique(t[d], return_counts=True)
+        if event_times.size < 2:
+            raise ValueError("need at least two distinct event times")
+        order = np.argsort(t)
+        t_sorted, w_sorted = t[order], w[order]
+        at_risk = np.cumsum(w_sorted[::-1])[::-1]  # weight with time >= t_sorted[i]
+        first = np.searchsorted(t_sorted, event_times, side="left")
+        H = np.cumsum(deaths / at_risk[first])
+        if tail_hazard is None:
+            k = min(tail_events or cls.TAIL_EVENTS, event_times.size - 1)
+            # average hazard since the event time before the last k events
+            n_last = int(np.searchsorted(np.cumsum(deaths[::-1]), k)) + 1  # distinct times
+            i = max(event_times.size - 1 - n_last, 0)
+            tail_hazard = (H[-1] - H[i]) / (event_times[-1] - event_times[i])
+        out = cls(times=tuple(event_times), cumhaz_values=tuple(H), tail_hazard=tail_hazard,
+                  note=note)
+        return out, info
+
+    @property
+    def median_os(self) -> float:
+        return float(self.inv_cumhaz(np.array(LN2)))
+
+    @property
+    def median_estimated(self) -> bool:
+        """Whether the median is inside the data (else it is in the extrapolated tail)."""
+        return self.cumhaz_values[-1] >= LN2
+
+    def _knots(self):
+        return np.concatenate([[0.0], self.times]), np.concatenate([[0.0], self.cumhaz_values])
+
+    def hazard(self, t):
+        ts, hs = self._knots()
+        t = np.asarray(t, dtype=float)
+        k = np.clip(np.searchsorted(ts, t, side="right") - 1, 0, ts.size - 2)
+        slopes = np.diff(hs) / np.diff(ts)
+        return np.where(t >= ts[-1], self.tail_hazard, slopes[k])
+
+    def cumhaz(self, t):
+        ts, hs = self._knots()
+        t = np.asarray(t, dtype=float)
+        return np.where(t <= ts[-1], np.interp(t, ts, hs), hs[-1] + self.tail_hazard * (t - ts[-1]))
+
+    def inv_cumhaz(self, h):
+        ts, hs = self._knots()
+        h = np.asarray(h, dtype=float)
+        return np.where(h <= hs[-1], np.interp(h, hs, ts), ts[-1] + (h - hs[-1]) / self.tail_hazard)
+
+    def label(self) -> str:
+        src = f" from {self.note}" if self.note else ""
+        return f"empirical (Breslow{src}; {len(self.times)} event times)"
+
+
 #: The families that `baseline_from_dict` and the CLI can build, by name.
 FAMILIES = {cls.family: cls for cls in (Exponential, Weibull, Gompertz,
-                                        PiecewiseExponential, LogLogistic)}
+                                        PiecewiseExponential, LogLogistic, EmpiricalBaseline)}
 #: The families with one `shape` parameter: the CLI's `--baseline` choices other than exponential.
 SHAPE_FAMILIES = ("weibull", "gompertz", "loglogistic")
 
@@ -496,7 +644,7 @@ def marginal_median(baseline: BaselineHazard, log_hr: float) -> float:
 
 
 __all__ = ["BaselineHazard", "Exponential", "Weibull", "Gompertz", "PiecewiseExponential",
-           "LogLogistic", "NumericBaseline", "baseline_from_dict", "is_exponential",
+           "LogLogistic", "NumericBaseline", "EmpiricalBaseline", "baseline_from_dict", "is_exponential",
            "marginal_cure_fraction", "marginal_median", "median_os_to_lambda0", "median_survival",
            "DEFAULT_LAMBDA0", "DEFAULT_MEDIAN_OS_MONTHS", "DEFAULT_TAU_MONTHS",
            "DEFAULT_CENSOR_RATE"]
